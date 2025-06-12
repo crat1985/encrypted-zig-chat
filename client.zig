@@ -74,15 +74,24 @@ fn handle_incoming_data(reader: std.io.AnyReader, allocator: std.mem.Allocator) 
 }
 
 pub fn main() !void {
+    const allocator = std.heap.page_allocator;
+
     read_messages_receive_queue = Queue.init(std.heap.page_allocator);
     defer read_messages_receive_queue.deinit();
 
     send_actions_receive_queue = Queue.init(std.heap.page_allocator);
     defer send_actions_receive_queue.deinit();
 
-    const addr = std.net.Address.initIp4(.{ 127, 0, 0, 1 }, 8080);
+    const args = try std.process.argsAlloc(allocator);
 
-    const stream = try std.net.tcpConnectToAddress(addr);
+    const stream = if (args.len == 1) blk: {
+        const addr = std.net.Address.initIp4(.{ 127, 0, 0, 1 }, 8080);
+
+        break :blk try std.net.tcpConnectToAddress(addr);
+    } else blk: {
+        const port: u16 = if (args.len == 2) 8080 else std.fmt.parseInt(u16, args[2], 10);
+        break :blk try std.net.tcpConnectToHost(allocator, args[1], port);
+    };
     defer stream.close();
 
     const x25519_key_pair = try handle_auth(stream);
@@ -101,8 +110,6 @@ pub fn main() !void {
     _ = try std.Thread.spawn(.{}, handle_incoming_data, .{ reader.any(), std.heap.page_allocator });
 
     _ = try std.Thread.spawn(.{}, listen_for_messages, .{x25519_key_pair.secret_key});
-
-    const allocator = std.heap.page_allocator;
 
     while (true) {
         const target_id = try ask_target_id();
