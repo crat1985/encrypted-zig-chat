@@ -89,7 +89,7 @@ pub fn main() !void {
 
         break :blk try std.net.tcpConnectToAddress(addr);
     } else blk: {
-        const port: u16 = if (args.len == 2) 8080 else std.fmt.parseInt(u16, args[2], 10);
+        const port: u16 = if (args.len == 2) 8080 else try std.fmt.parseInt(u16, args[2], 10);
         break :blk try std.net.tcpConnectToHost(allocator, args[1], port);
     };
     defer stream.close();
