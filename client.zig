@@ -73,6 +73,11 @@ fn handle_incoming_data(reader: std.io.AnyReader, allocator: std.mem.Allocator) 
     }
 }
 
+pub const std_options: std.Options = .{
+    // Set the log level to info
+    .log_level = .info,
+};
+
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 

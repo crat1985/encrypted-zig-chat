@@ -21,6 +21,11 @@ const HashMapType = std.HashMap([32]u8, []std.net.Server.Connection, HashMapCont
 
 var users: Mutex(HashMapType) = undefined;
 
+pub const std_options: std.Options = .{
+    // Set the log level to info
+    .log_level = .info,
+};
+
 pub fn main() !void {
     users = Mutex(HashMapType).init(HashMapType.init(std.heap.page_allocator));
 
