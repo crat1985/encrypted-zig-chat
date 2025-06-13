@@ -1,21 +1,7 @@
 const std = @import("std");
 const Mutex = @import("mutex.zig").Mutex;
 
-const HashMapContext = struct {
-    const Self = @This();
-
-    pub fn hash(_: Self, key: [32]u8) u64 {
-        const Hasher = std.hash.Wyhash;
-
-        var hasher = Hasher.init(0);
-        hasher.update(&key);
-        return hasher.final();
-    }
-
-    pub fn eql(_: Self, k1: [32]u8, k2: [32]u8) bool {
-        return std.mem.eql(u8, &k1, &k2);
-    }
-};
+const HashMapContext = @import("id_hashmap_ctx.zig").HashMapContext;
 
 const HashMapType = std.HashMap([32]u8, []std.net.Server.Connection, HashMapContext, 70);
 
@@ -71,6 +57,10 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
             try send_packet(.Other, &.{1}, writer);
             continue;
         };
+        const my_conns = users_lock.get(pubkey) orelse {
+            try send_packet(.Other, &.{1}, writer);
+            continue;
+        };
         users.unlock();
         try send_packet(.Other, &.{0}, writer);
 
@@ -90,6 +80,20 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
             const target_writer = target_conn.stream.writer().any();
 
             try send_packet(.NewMessagesListener, full_packet, target_writer);
+        }
+
+        const full_myself_paquet = try allocator.alloc(u8, pubkey.len * 2 + message.len);
+        defer allocator.free(full_myself_paquet);
+        @memcpy(full_myself_paquet[0..32], &pubkey);
+        @memcpy(full_myself_paquet[32..64], &target_id);
+        @memcpy(full_myself_paquet[64..], message);
+
+        for (my_conns) |my_conn| {
+            if (my_conn.stream.handle == conn.stream.handle) continue;
+
+            const target_me_writer = my_conn.stream.writer().any();
+
+            try send_packet(.NewMessagesListener, full_myself_paquet, target_me_writer);
         }
     }
 }

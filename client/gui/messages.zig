@@ -1,0 +1,62 @@
+const std = @import("std");
+
+const HashMapContext = @import("../../id_hashmap_ctx.zig").HashMapContext;
+
+const HashMapType = std.HashMap([32]u8, std.ArrayList(Message), HashMapContext, 70);
+
+const Mutex = @import("../../mutex.zig").Mutex;
+
+const allocator = std.heap.page_allocator;
+
+pub var messages: Mutex(HashMapType) = undefined;
+
+pub fn insert_message(discussion_id: [32]u8, msg: Message) !void {
+    const messages_lock = messages.lock();
+    defer messages.unlock();
+
+    const entry = try messages_lock.getOrPut(discussion_id);
+    if (entry.found_existing) {
+        try entry.value_ptr.append(msg);
+    } else {
+        var list = std.ArrayList(Message).init(allocator);
+        try list.append(msg);
+        entry.value_ptr.* = list;
+    }
+}
+
+pub const DMMessageAuthor = enum(u1) {
+    Me,
+    NotMe,
+};
+
+pub const Message = struct {
+    sent_by: DMMessageAuthor,
+    content: []u8,
+};
+
+pub fn init() void {
+    messages = Mutex(HashMapType).init(HashMapType.init(allocator));
+}
+
+pub fn deinit() void {
+    var iterator = messages._data.valueIterator();
+
+    while (iterator.next()) |value| {
+        for (value.items) |message| {
+            allocator.free(message.content);
+        }
+        value.deinit();
+    }
+
+    messages._data.deinit();
+}
+
+///`dm` is set when the author is myself, to someone else
+pub fn handle_new_message(author: [32]u8, dm: ?[32]u8, message: []const u8) !void {
+    const discussion_id = if (dm) |dm_id| dm_id else author;
+    const sender = if (dm) |_| DMMessageAuthor.Me else DMMessageAuthor.NotMe;
+
+    const owned_message = try allocator.dupe(u8, message);
+
+    try insert_message(discussion_id, .{ .content = owned_message, .sent_by = sender });
+}

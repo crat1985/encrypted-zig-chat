@@ -1,0 +1,154 @@
+const messages = @import("messages.zig");
+
+const C = @import("c.zig").C;
+const GUI = @import("../gui.zig");
+const std = @import("std");
+const txt_input = @import("text_input.zig");
+
+const TARGET_ID_HEIGHT = 80;
+const SPACE_BETWEEN = 15;
+
+const allocator = std.heap.page_allocator;
+
+pub fn ask_target_id(my_id: [32]u8) ![32]u8 {
+    var target_id: ?[32]u8 = null;
+    var is_manual = false;
+    var manual_target_id: [64:0]u8 = std.mem.zeroes([64:0]u8);
+    var manual_target_id_index: usize = 0;
+
+    const my_id_hex = std.fmt.bytesToHex(my_id, .lower);
+    const my_id_hexz = try allocator.dupeZ(u8, &my_id_hex);
+    defer allocator.free(my_id_hexz);
+    const my_id_text = try std.fmt.allocPrintZ(allocator, "{s} (click to copy)", .{my_id_hex});
+    defer allocator.free(my_id_text);
+    const my_id_text_width = C.MeasureText(my_id_text, GUI.FONT_SIZE / 3);
+
+    const my_id_rect = C.Rectangle{
+        .x = 0,
+        .y = 0,
+        .width = @floatFromInt(my_id_text_width + 10),
+        .height = @floatFromInt(GUI.FONT_SIZE / 3 + 10),
+    };
+
+    while (!C.WindowShouldClose() and target_id == null) {
+        C.BeginDrawing();
+        defer C.EndDrawing();
+
+        C.ClearBackground(C.BLACK);
+
+        C.DrawText(my_id_text, 5, 5, GUI.FONT_SIZE / 3, C.WHITE);
+
+        if (C.CheckCollisionPointRec(C.GetMousePosition(), my_id_rect)) {
+            C.SetMouseCursor(C.MOUSE_CURSOR_POINTING_HAND);
+
+            if (C.IsMouseButtonPressed(C.MOUSE_LEFT_BUTTON)) {
+                C.SetClipboardText(my_id_hexz);
+            }
+        } else {
+            C.SetMouseCursor(C.MOUSE_CURSOR_DEFAULT);
+        }
+
+        const close_button = C.Rectangle{
+            .x = @floatFromInt(GUI.WIDTH - 25),
+            .y = 5,
+            .width = 20,
+            .height = 20,
+        };
+
+        var close_button_bg_color = if (is_manual) C.BLUE else C.BLACK;
+
+        if (C.CheckCollisionPointRec(C.GetMousePosition(), close_button)) {
+            close_button_bg_color = C.DARKGRAY;
+
+            if (C.IsMouseButtonDown(C.MOUSE_LEFT_BUTTON)) {
+                close_button_bg_color = C.GRAY;
+            }
+
+            if (C.IsMouseButtonPressed(C.MOUSE_LEFT_BUTTON)) {
+                is_manual = !is_manual;
+            }
+        }
+
+        C.DrawRectangleRec(close_button, close_button_bg_color);
+
+        C.DrawLine(@intCast(GUI.WIDTH - 25), 15, @intCast(GUI.WIDTH - 5), 15, C.WHITE);
+        C.DrawLine(@intCast(GUI.WIDTH - 15), 5, @intCast(GUI.WIDTH - 15), 25, C.WHITE);
+
+        switch (is_manual) {
+            true => {
+                if (C.IsKeyPressed(C.KEY_ESCAPE) or C.IsKeyPressedRepeat(C.KEY_ESCAPE)) {
+                    is_manual = false;
+                    continue;
+                }
+
+                if (manual_target_id_index + 1 == manual_target_id.len) {
+                    if (C.IsKeyPressed(C.KEY_ENTER) or C.IsKeyPressedRepeat(C.KEY_ENTER)) {
+                        target_id = undefined;
+                        _ = try std.fmt.hexToBytes(&target_id.?, &manual_target_id);
+                    }
+                }
+
+                const txt = "Enter the target ID (hexadecimal) :";
+
+                const txt_length = C.MeasureText(txt, GUI.FONT_SIZE * 2 / 3);
+
+                C.DrawText(txt, @intCast(GUI.WIDTH / 2 - @as(u64, @intCast(txt_length)) / 2), @intCast(GUI.HEIGHT / 2 - GUI.FONT_SIZE * 2), GUI.FONT_SIZE * 2 / 3, C.WHITE);
+
+                txt_input.draw_text_input_array(64, @intCast(GUI.WIDTH / 2), @intCast(GUI.HEIGHT / 2 - GUI.FONT_SIZE / 2), &manual_target_id, &manual_target_id_index);
+            },
+            false => {
+                var y_offset: usize = 0;
+
+                const messages_lock = messages.messages.lock();
+                defer messages.messages.unlock();
+
+                var iterator = messages_lock.iterator();
+
+                while (iterator.next()) |discussion| {
+                    try display_target_id(discussion.key_ptr.*, discussion.value_ptr.items.len, &y_offset, &target_id.?);
+                }
+            },
+        }
+    }
+
+    if (C.WindowShouldClose()) std.process.exit(0);
+
+    return target_id.?;
+}
+
+fn display_target_id(id: [32]u8, messages_count: usize, y_offset: *usize, target_id: *[32]u8) !void {
+    const rect = C.Rectangle{
+        .x = 0,
+        .y = @floatFromInt(y_offset.*),
+        .width = @floatFromInt(GUI.WIDTH),
+        .height = TARGET_ID_HEIGHT,
+    };
+
+    var rect_color = C.BLACK;
+
+    if (C.CheckCollisionPointRec(C.GetMousePosition(), rect)) {
+        rect_color = C.DARKGRAY;
+
+        if (C.IsMouseButtonDown(C.MOUSE_LEFT_BUTTON)) {
+            rect_color = C.GRAY;
+        }
+
+        if (C.IsMouseButtonPressed(C.MOUSE_LEFT_BUTTON)) {
+            target_id.* = id; //TODO perhaps stop the loop execution
+        }
+    }
+
+    C.DrawRectangleRec(rect, rect_color);
+    const id_hex = std.fmt.bytesToHex(id, .lower);
+    const id_hexz = try allocator.dupeZ(u8, &id_hex);
+    C.DrawText(id_hexz.ptr, GUI.button_padding, @intCast(y_offset.* + GUI.button_padding), GUI.FONT_SIZE, C.WHITE);
+
+    const number_of_messages_text: [:0]u8 = try std.fmt.allocPrintZ(allocator, "{d} message(s)", .{messages_count});
+    defer allocator.free(number_of_messages_text);
+
+    C.DrawText(number_of_messages_text, GUI.button_padding, @intCast(y_offset.* + GUI.button_padding + GUI.FONT_SIZE), GUI.FONT_SIZE / 2, C.WHITE);
+
+    y_offset.* += TARGET_ID_HEIGHT;
+
+    y_offset.* += SPACE_BETWEEN;
+}
