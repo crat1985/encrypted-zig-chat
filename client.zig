@@ -68,7 +68,7 @@ pub fn main() !void {
         const symmetric_key = try get_symmetric_key(target_id_parsed, x25519_key_pair.secret_key);
 
         while (true) {
-            const raw_message = abstraction.ask_message(target_id) catch |err| {
+            const raw_message = abstraction.ask_message(pubkey, target_id) catch |err| {
                 if (err == error.DMExit) break;
                 return err;
             };

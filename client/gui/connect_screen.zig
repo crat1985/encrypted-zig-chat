@@ -30,13 +30,13 @@ pub fn connect_to_server() !std.net.Stream {
 
 fn draw_connect_to_server_screen(server_addr: *[:0]u8, server: *?std.net.Stream) !void {
     const ConnectButtonText = "Connect";
-    const connect_button_length = C.MeasureText(ConnectButtonText, 30);
+    const connect_button_length = C.MeasureText(ConnectButtonText, GUI.FONT_SIZE);
 
     C.ClearBackground(C.BLACK);
 
     const x1_center = GUI.WIDTH / 2;
     const y1 = GUI.HEIGHT / 3;
-    try txt_input.draw_text_input(@intCast(x1_center), @intCast(y1), server_addr);
+    try txt_input.draw_text_input(@intCast(x1_center), @intCast(y1), server_addr, GUI.FONT_SIZE);
 
     const connect_button = C.Rectangle{
         .x = @floatFromInt((GUI.WIDTH / 2) - (@abs(@as(i64, connect_button_length)) / 2) - GUI.button_padding),

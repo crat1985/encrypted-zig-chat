@@ -24,22 +24,22 @@ pub fn draw_text_input_array(comptime n: usize, center_x: c_int, y: c_int, txt: 
 
     var txt_mut: [:0]u8 = txt[0..];
 
-    draw_text_input_no_events(center_x, y, &txt_mut);
+    draw_text_input_no_events(center_x, y, &txt_mut, GUI.FONT_SIZE);
 }
 
-pub fn draw_text_input(center_x: c_int, y: c_int, txt: *[:0]u8) !void {
+pub fn draw_text_input(center_x: c_int, y: c_int, txt: *[:0]u8, font_size: c_int) !void {
     try handle_potential_text_growth(txt);
     try handle_potential_text_reduction(txt);
 
-    draw_text_input_no_events(center_x, y, txt);
+    draw_text_input_no_events(center_x, y, txt, font_size);
 }
 
-fn draw_text_input_no_events(center_x: c_int, y: c_int, txt: *[:0]u8) void {
-    const txt_length = C.MeasureText(txt.ptr, GUI.FONT_SIZE);
+fn draw_text_input_no_events(center_x: c_int, y: c_int, txt: *[:0]u8, font_size: c_int) void {
+    const txt_length = C.MeasureText(txt.ptr, font_size);
 
     const x1 = @as(u64, @intCast(center_x)) - (@abs(@as(i64, txt_length)) / 2);
 
-    C.DrawText(txt.ptr, @intCast(x1), @intCast(y), GUI.FONT_SIZE, C.WHITE);
+    C.DrawText(txt.ptr, @intCast(x1), @intCast(y), font_size, C.WHITE);
 }
 
 fn handle_potential_text_growth(txt: *[:0]u8) !void {

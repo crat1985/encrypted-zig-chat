@@ -16,6 +16,9 @@ pub fn handle_auth(stream: std.net.Stream) !std.crypto.dh.X25519.KeyPair {
 
         C.ClearBackground(C.BLACK);
 
+        GUI.WIDTH = @intCast(C.GetScreenWidth());
+        GUI.HEIGHT = @intCast(C.GetScreenHeight());
+
         if (C.IsKeyPressed(C.KEY_ENTER) or C.IsKeyPressedRepeat(C.KEY_ENTER)) {
             try auth(&keypair, stream, passphrase);
         }
@@ -29,7 +32,7 @@ pub fn handle_auth(stream: std.net.Stream) !std.crypto.dh.X25519.KeyPair {
 }
 
 fn draw_auth_screen(passphrase: *[:0]u8, keypair: *?std.crypto.dh.X25519.KeyPair, stream: std.net.Stream) !void {
-    try txt_input.draw_text_input(@intCast(GUI.WIDTH / 2), @intCast(GUI.HEIGHT / 3), passphrase);
+    try txt_input.draw_text_input(@intCast(GUI.WIDTH / 2), @intCast(GUI.HEIGHT / 3), passphrase, GUI.FONT_SIZE);
 
     const auth_button_text = "Authenticate";
     const auth_button_text_length = C.MeasureText(auth_button_text, GUI.FONT_SIZE);

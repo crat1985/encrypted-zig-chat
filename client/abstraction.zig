@@ -41,9 +41,9 @@ pub fn ask_target_id(my_id: [32]u8) ![32]u8 {
     };
 }
 
-pub fn ask_message(dm: [32]u8) ![]u8 {
+pub fn ask_message(my_id: [32]u8, dm: [32]u8) ![]u8 {
     return switch (is_GUI) {
-        true => try gui.ask_message(dm),
+        true => try gui.ask_message(my_id, dm),
         false => try cli.ask_message(),
     };
 }

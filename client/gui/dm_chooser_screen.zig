@@ -16,37 +16,16 @@ pub fn ask_target_id(my_id: [32]u8) ![32]u8 {
     var manual_target_id: [64:0]u8 = std.mem.zeroes([64:0]u8);
     var manual_target_id_index: usize = 0;
 
-    const my_id_hex = std.fmt.bytesToHex(my_id, .lower);
-    const my_id_hexz = try allocator.dupeZ(u8, &my_id_hex);
-    defer allocator.free(my_id_hexz);
-    const my_id_text = try std.fmt.allocPrintZ(allocator, "{s} (click to copy)", .{my_id_hex});
-    defer allocator.free(my_id_text);
-    const my_id_text_width = C.MeasureText(my_id_text, GUI.FONT_SIZE / 3);
-
-    const my_id_rect = C.Rectangle{
-        .x = 0,
-        .y = 0,
-        .width = @floatFromInt(my_id_text_width + 10),
-        .height = @floatFromInt(GUI.FONT_SIZE / 3 + 10),
-    };
-
     while (!C.WindowShouldClose() and target_id == null) {
         C.BeginDrawing();
         defer C.EndDrawing();
 
         C.ClearBackground(C.BLACK);
 
-        C.DrawText(my_id_text, 5, 5, GUI.FONT_SIZE / 3, C.WHITE);
+        GUI.WIDTH = @intCast(C.GetScreenWidth());
+        GUI.HEIGHT = @intCast(C.GetScreenHeight());
 
-        if (C.CheckCollisionPointRec(C.GetMousePosition(), my_id_rect)) {
-            C.SetMouseCursor(C.MOUSE_CURSOR_POINTING_HAND);
-
-            if (C.IsMouseButtonPressed(C.MOUSE_LEFT_BUTTON)) {
-                C.SetClipboardText(my_id_hexz);
-            }
-        } else {
-            C.SetMouseCursor(C.MOUSE_CURSOR_DEFAULT);
-        }
+        try @import("id_top_left_display.zig").draw_id_top_left_display(my_id);
 
         const close_button = C.Rectangle{
             .x = @floatFromInt(GUI.WIDTH - 25),
@@ -95,6 +74,42 @@ pub fn ask_target_id(my_id: [32]u8) ![32]u8 {
                 C.DrawText(txt, @intCast(GUI.WIDTH / 2 - @as(u64, @intCast(txt_length)) / 2), @intCast(GUI.HEIGHT / 2 - GUI.FONT_SIZE * 2), GUI.FONT_SIZE * 2 / 3, C.WHITE);
 
                 txt_input.draw_text_input_array(64, @intCast(GUI.WIDTH / 2), @intCast(GUI.HEIGHT / 2 - GUI.FONT_SIZE / 2), &manual_target_id, &manual_target_id_index);
+
+                const paste_txt = "Paste ID from clipboard";
+                const paste_txt_length = C.MeasureText(paste_txt, GUI.FONT_SIZE * 2 / 3);
+
+                const paste_txt_rect = C.Rectangle{
+                    .x = @floatFromInt(GUI.WIDTH / 2 - @as(u64, @intCast(paste_txt_length)) / 2),
+                    .y = @floatFromInt(GUI.HEIGHT / 2 + GUI.FONT_SIZE * 2),
+                    .width = @floatFromInt(paste_txt_length),
+                    .height = @floatFromInt(GUI.FONT_SIZE * 2 / 3),
+                };
+
+                var paste_txt_rect_bg_color = C.BLACK;
+
+                if (C.CheckCollisionPointRec(C.GetMousePosition(), paste_txt_rect)) {
+                    paste_txt_rect_bg_color = C.DARKGRAY;
+
+                    if (C.IsMouseButtonDown(C.MOUSE_LEFT_BUTTON)) {
+                        paste_txt_rect_bg_color = C.GRAY;
+                    }
+
+                    if (C.IsMouseButtonPressed(C.MOUSE_LEFT_BUTTON)) {
+                        const clipboard_data = C.GetClipboardText();
+                        const len = C.TextLength(clipboard_data);
+                        if (len != 64) {
+                            std.log.err("Invalid ID length {d}", .{len});
+                            continue;
+                        }
+
+                        @memcpy(&manual_target_id, clipboard_data);
+                        manual_target_id_index = manual_target_id.len - 1;
+                    }
+                }
+
+                C.DrawRectangleRec(paste_txt_rect, paste_txt_rect_bg_color);
+
+                C.DrawText(paste_txt, @intFromFloat(paste_txt_rect.x), @intFromFloat(paste_txt_rect.y), GUI.FONT_SIZE * 2 / 3, C.WHITE);
             },
             false => {
                 var y_offset: usize = 0;
