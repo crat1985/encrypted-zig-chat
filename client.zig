@@ -72,6 +72,7 @@ pub fn main() !void {
                 if (err == error.DMExit) break;
                 return err;
             };
+
             defer allocator.free(raw_message);
 
             //Encrypt message

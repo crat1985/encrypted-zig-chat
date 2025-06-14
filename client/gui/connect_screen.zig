@@ -36,7 +36,7 @@ fn draw_connect_to_server_screen(server_addr: *[:0]u8, server: *?std.net.Stream)
 
     const x1_center = GUI.WIDTH / 2;
     const y1 = GUI.HEIGHT / 3;
-    try txt_input.draw_text_input(@intCast(x1_center), @intCast(y1), server_addr, GUI.FONT_SIZE);
+    try txt_input.draw_text_input(@intCast(x1_center), @intCast(y1), server_addr, GUI.FONT_SIZE, .Center);
 
     const connect_button = C.Rectangle{
         .x = @floatFromInt((GUI.WIDTH / 2) - (@abs(@as(i64, connect_button_length)) / 2) - GUI.button_padding),

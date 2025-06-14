@@ -57,7 +57,7 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
             try send_packet(.Other, &.{1}, writer);
             continue;
         };
-        const my_conns = users_lock.get(pubkey) orelse {
+        const my_conns = if (std.mem.eql(u8, &target_id, &pubkey)) null else users_lock.get(pubkey) orelse {
             try send_packet(.Other, &.{1}, writer);
             continue;
         };
@@ -69,7 +69,7 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
         defer allocator.free(message);
         try reader.readNoEof(message);
 
-        std.log.info("New message of size {d} from user {s} : {s}", .{ message_size, std.fmt.bytesToHex(target_id, .lower), message });
+        std.log.info("New message of size {d} from user {s}", .{ message_size, std.fmt.bytesToHex(target_id, .lower) });
 
         const full_packet = try allocator.alloc(u8, pubkey.len + message.len);
         defer allocator.free(full_packet);
@@ -88,12 +88,15 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
         @memcpy(full_myself_paquet[32..64], &target_id);
         @memcpy(full_myself_paquet[64..], message);
 
-        for (my_conns) |my_conn| {
-            if (my_conn.stream.handle == conn.stream.handle) continue;
+        if (my_conns) |my_conns_unwrap| {
+            for (my_conns_unwrap) |my_conn| {
+                //TODO not sure if I should send it to the sender
+                // if (my_conn.stream.handle == conn.stream.handle) continue;
 
-            const target_me_writer = my_conn.stream.writer().any();
+                const target_me_writer = my_conn.stream.writer().any();
 
-            try send_packet(.NewMessagesListener, full_myself_paquet, target_me_writer);
+                try send_packet(.NewMessagesListener, full_myself_paquet, target_me_writer);
+            }
         }
     }
 }

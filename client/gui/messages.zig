@@ -31,7 +31,7 @@ pub const DMMessageAuthor = enum(u1) {
 
 pub const Message = struct {
     sent_by: DMMessageAuthor,
-    content: []u8,
+    content: [:0]u8,
 };
 
 pub fn init() void {
@@ -56,7 +56,9 @@ pub fn handle_new_message(author: [32]u8, dm: ?[32]u8, message: []const u8) !voi
     const discussion_id = if (dm) |dm_id| dm_id else author;
     const sender = if (dm) |_| DMMessageAuthor.Me else DMMessageAuthor.NotMe;
 
-    const owned_message = try allocator.dupe(u8, message);
+    const owned_message = try allocator.dupeZ(u8, message);
+
+    std.log.info("New message received : {s}", .{owned_message});
 
     try insert_message(discussion_id, .{ .content = owned_message, .sent_by = sender });
 }

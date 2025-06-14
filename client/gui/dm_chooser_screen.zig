@@ -73,7 +73,7 @@ pub fn ask_target_id(my_id: [32]u8) ![32]u8 {
 
                 C.DrawText(txt, @intCast(GUI.WIDTH / 2 - @as(u64, @intCast(txt_length)) / 2), @intCast(GUI.HEIGHT / 2 - GUI.FONT_SIZE * 2), GUI.FONT_SIZE * 2 / 3, C.WHITE);
 
-                txt_input.draw_text_input_array(64, @intCast(GUI.WIDTH / 2), @intCast(GUI.HEIGHT / 2 - GUI.FONT_SIZE / 2), &manual_target_id, &manual_target_id_index);
+                txt_input.draw_text_input_array(64, @intCast(GUI.WIDTH / 2), @intCast(GUI.HEIGHT / 2 - GUI.FONT_SIZE / 2), &manual_target_id, &manual_target_id_index, .Center);
 
                 const paste_txt = "Paste ID from clipboard";
                 const paste_txt_length = C.MeasureText(paste_txt, GUI.FONT_SIZE * 2 / 3);

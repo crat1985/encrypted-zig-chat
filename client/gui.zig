@@ -21,7 +21,8 @@ pub fn init() void {
     C.ClearBackground(C.BLACK);
 }
 
-pub const FONT_SIZE = 20;
+// pub const FONT_SIZE = 20;
+pub const FONT_SIZE = 10;
 pub const button_padding = 10;
 
 // fn draw_connected_screen() !void {
