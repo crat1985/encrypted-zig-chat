@@ -52,7 +52,9 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
     defer remove_connection_from_users(pubkey, conn.stream) catch unreachable;
 
     while (true) {
-        const target_id = reader.readBytesNoEof(32) catch break; //EOF
+        const block_count = reader.readInt(u32, .big) catch break; //EOF
+
+        const target_id = try reader.readBytesNoEof(32);
         const users_lock = users.lock();
         const target_conns = if (std.mem.eql(u8, &target_id, &pubkey)) null else users_lock.get(target_id) orelse {
             try send_packet(.Other, &.{1}, writer);
@@ -66,18 +68,26 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
         users.unlock();
         try send_packet(.Other, &.{0}, writer);
 
-        const message_size = try reader.readInt(u64, .big);
+        const message_size = 32 + @as(u64, block_count) * @import("client/message.zig").BLOCK_SIZE;
         const message = try allocator.alloc(u8, message_size);
         defer allocator.free(message);
         try reader.readNoEof(message);
 
         std.log.info("New message of size {d} from user {s}", .{ message_size, std.fmt.bytesToHex(target_id, .lower) });
 
+        const block_count_bytes = blk: {
+            var block_count_bytes: [4]u8 = undefined;
+            std.mem.writeInt(u32, &block_count_bytes, block_count, .big);
+            break :blk block_count_bytes;
+        };
+
         if (target_conns) |targets| {
-            const full_packet = try allocator.alloc(u8, pubkey.len + message.len);
+            const full_packet = try allocator.alloc(u8, 4 + 32 + message.len);
             defer allocator.free(full_packet);
-            @memcpy(full_packet[0..32], &pubkey);
-            @memcpy(full_packet[32..], message);
+
+            @memcpy(full_packet[0..4], &block_count_bytes);
+            @memcpy(full_packet[4 .. 4 + 32], &pubkey);
+            @memcpy(full_packet[4 + 32 ..], message);
 
             for (targets) |target_conn| {
                 const target_writer = target_conn.stream.writer().any();
@@ -86,11 +96,18 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
             }
         }
 
-        const full_myself_paquet = try allocator.alloc(u8, pubkey.len * 2 + message.len);
+        const full_myself_paquet = try allocator.alloc(u8, 4 + pubkey.len * 2 + message.len);
         defer allocator.free(full_myself_paquet);
-        @memcpy(full_myself_paquet[0..32], &pubkey);
-        @memcpy(full_myself_paquet[32..64], &target_id);
-        @memcpy(full_myself_paquet[64..], message);
+        @memcpy(full_myself_paquet[0..4], &block_count_bytes);
+
+        var i: usize = 4;
+        @memcpy(full_myself_paquet[i .. i + 32], &pubkey);
+        i += 32;
+
+        @memcpy(full_myself_paquet[i .. i + 32], &target_id);
+        i += 32;
+
+        @memcpy(full_myself_paquet[i..], message);
 
         for (my_conns) |my_conn| {
             //TODO not sure if I should send it to the sender

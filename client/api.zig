@@ -27,7 +27,8 @@ pub fn auth(stream: std.net.Stream, derived_passphrase: [32]u8) !std.crypto.dh.X
     return try std.crypto.dh.X25519.KeyPair.fromEd25519(ed_key_pair);
 }
 
-pub fn send_message(writer: std.io.AnyWriter, target_id: [32]u8, encrypted_message: []const u8) !void {
+pub fn send_message(writer: std.io.AnyWriter, block_count: u32, target_id: [32]u8, encrypted_message: []const u8) !void {
+    try writer.writeInt(u32, block_count, .big);
     try writer.writeAll(&target_id);
 
     {
@@ -38,6 +39,5 @@ pub fn send_message(writer: std.io.AnyWriter, target_id: [32]u8, encrypted_messa
         }
     }
 
-    try writer.writeInt(u64, encrypted_message.len, .big);
     try writer.writeAll(encrypted_message);
 }
