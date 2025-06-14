@@ -21,7 +21,7 @@ pub const Queue = struct {
         defer self.data.unlock();
 
         const new_slice = try self.allocator.alloc([]u8, lock.len + 1);
-        @memcpy(new_slice[0 .. new_slice.len - 1], lock.*);
+        @memcpy(new_slice[0..lock.len], lock.*);
         new_slice[new_slice.len - 1] = data;
         self.allocator.free(lock.*);
 
@@ -36,8 +36,9 @@ pub const Queue = struct {
 
             self.data.unlock();
 
-            std.time.sleep(std.time.ns_per_ms * 6);
+            std.time.sleep(std.time.ns_per_ms * 50);
         }; //wait for data to be added
+        defer self.data.unlock();
 
         const data = data_lock.*[0];
 

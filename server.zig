@@ -1,5 +1,6 @@
 const std = @import("std");
 const Mutex = @import("mutex.zig").Mutex;
+const PacketTarget = @import("paquet.zig").PacketTarget;
 
 const HashMapContext = @import("id_hashmap_ctx.zig").HashMapContext;
 
@@ -53,14 +54,15 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
     while (true) {
         const target_id = reader.readBytesNoEof(32) catch break; //EOF
         const users_lock = users.lock();
-        const target_conns = users_lock.get(target_id) orelse {
+        const target_conns = if (std.mem.eql(u8, &target_id, &pubkey)) null else users_lock.get(target_id) orelse {
             try send_packet(.Other, &.{1}, writer);
             continue;
         };
-        const my_conns = if (std.mem.eql(u8, &target_id, &pubkey)) null else users_lock.get(pubkey) orelse {
+        const my_conns = users_lock.get(pubkey) orelse {
             try send_packet(.Other, &.{1}, writer);
             continue;
         };
+        //TODO perhaps clone the slices to avoid concurrent modification
         users.unlock();
         try send_packet(.Other, &.{0}, writer);
 
@@ -71,15 +73,17 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
 
         std.log.info("New message of size {d} from user {s}", .{ message_size, std.fmt.bytesToHex(target_id, .lower) });
 
-        const full_packet = try allocator.alloc(u8, pubkey.len + message.len);
-        defer allocator.free(full_packet);
-        @memcpy(full_packet[0..32], &pubkey);
-        @memcpy(full_packet[32..], message);
+        if (target_conns) |targets| {
+            const full_packet = try allocator.alloc(u8, pubkey.len + message.len);
+            defer allocator.free(full_packet);
+            @memcpy(full_packet[0..32], &pubkey);
+            @memcpy(full_packet[32..], message);
 
-        for (target_conns) |target_conn| {
-            const target_writer = target_conn.stream.writer().any();
+            for (targets) |target_conn| {
+                const target_writer = target_conn.stream.writer().any();
 
-            try send_packet(.NewMessagesListener, full_packet, target_writer);
+                try send_packet(.NewMessagesListener, full_packet, target_writer);
+            }
         }
 
         const full_myself_paquet = try allocator.alloc(u8, pubkey.len * 2 + message.len);
@@ -88,15 +92,13 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
         @memcpy(full_myself_paquet[32..64], &target_id);
         @memcpy(full_myself_paquet[64..], message);
 
-        if (my_conns) |my_conns_unwrap| {
-            for (my_conns_unwrap) |my_conn| {
-                //TODO not sure if I should send it to the sender
-                // if (my_conn.stream.handle == conn.stream.handle) continue;
+        for (my_conns) |my_conn| {
+            //TODO not sure if I should send it to the sender
+            // if (my_conn.stream.handle == conn.stream.handle) continue;
 
-                const target_me_writer = my_conn.stream.writer().any();
+            const target_me_writer = my_conn.stream.writer().any();
 
-                try send_packet(.NewMessagesListener, full_myself_paquet, target_me_writer);
-            }
+            try send_packet(.NewMessagesListener, full_myself_paquet, target_me_writer);
         }
     }
 }
@@ -161,11 +163,6 @@ fn remove_connection_from_users(pubkey: [32]u8, stream: std.net.Stream) !void {
     allocator.free(slice);
     get_entry.value_ptr.* = new_slice;
 }
-
-const PacketTarget = enum(u8) {
-    NewMessagesListener = 0,
-    Other = 1,
-};
 
 ///must be already encrypted
 fn send_packet(to: PacketTarget, data: []const u8, writer: std.io.AnyWriter) !void {

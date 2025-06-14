@@ -4,17 +4,19 @@ const api = @import("client/api.zig");
 const abstraction = @import("client/abstraction.zig");
 const Queue = @import("client/queue.zig").Queue;
 const queues = @import("client/queues.zig");
+const PacketTarget = @import("paquet.zig").PacketTarget;
 
 fn handle_incoming_data(reader: std.io.AnyReader, allocator: std.mem.Allocator) !void {
-    const target = try reader.readByte();
-    const len = try reader.readInt(u64, .big);
-    const data = try allocator.alloc(u8, len);
-    try reader.readNoEof(data);
+    while (true) {
+        const target: PacketTarget = try reader.readEnum(PacketTarget, .big);
+        const len = try reader.readInt(u64, .big);
+        const data = try allocator.alloc(u8, len);
+        try reader.readNoEof(data);
 
-    switch (target) {
-        0 => try queues.read_messages_receive_queue.append(data),
-        1 => try queues.send_actions_receive_queue.append(data),
-        else => return error.InvalidPaquetTarget,
+        switch (target) {
+            .NewMessagesListener => try queues.read_messages_receive_queue.append(data),
+            .Other => try queues.send_actions_receive_queue.append(data),
+        }
     }
 }
 
@@ -111,7 +113,7 @@ fn listen_for_messages(my_privkey: [32]u8, pubkey: [32]u8) !void {
             i = 64;
         }
 
-        const author_pubkey = std.crypto.ecc.Curve25519.fromBytes(author);
+        const author_pubkey = std.crypto.ecc.Curve25519.fromBytes(if (dm) |dm_unwrap| dm_unwrap else author);
 
         const symmetric_key = try get_symmetric_key(author_pubkey, my_privkey);
 
