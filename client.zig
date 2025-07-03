@@ -1,26 +1,12 @@
 const std = @import("std");
 const Mutex = @import("mutex.zig").Mutex;
 const api = @import("client/api.zig");
-const Queue = @import("client/queue.zig").Queue;
-const queues = @import("client/queues.zig");
-const PacketTarget = @import("paquet.zig").PacketTarget;
 const message = @import("client/message.zig");
 const GUI = @import("client/gui.zig");
 
 fn handle_incoming_data(reader: std.io.AnyReader, privkey: [32]u8, pubkey: [32]u8) !void {
     while (true) {
-        const target: PacketTarget = try reader.readEnum(PacketTarget, .big);
-        const len: u64 = switch (target) {
-            .NewMessagesListener => {
-                try handle_message(reader, privkey, pubkey);
-                continue;
-            },
-            .Other => try reader.readInt(u64, .big),
-        };
-        const data = try allocator.alloc(u8, len);
-        try reader.readNoEof(data);
-
-        try queues.send_actions_receive_queue.append(data);
+        try handle_message(reader, privkey, pubkey);
     }
 }
 
@@ -30,9 +16,6 @@ pub const std_options: std.Options = .{
 };
 
 pub fn main() !void {
-    queues.send_actions_receive_queue = Queue.init(std.heap.page_allocator);
-    defer queues.send_actions_receive_queue.deinit();
-
     GUI.init();
     defer GUI.deinit();
 
@@ -67,24 +50,12 @@ pub fn main() !void {
             };
             defer allocator.free(raw_message);
 
-            const block_count: u32 = blk: {
-                const encrypted_msg_len = @sizeOf(u64) + raw_message.len;
-
-                break :blk @intCast((encrypted_msg_len + (message.BLOCK_SIZE - 1)) / message.BLOCK_SIZE);
-            };
-
-            const encrypted = try message.encrypt_message(symmetric_key, raw_message, target_id, block_count);
-            defer allocator.free(encrypted);
-
-            api.send_message(writer.any(), block_count, target_id, encrypted) catch |err| {
-                std.log.err("Error while sending message : {}", .{err});
-                continue;
-            };
+            try message.encrypt_message_and_send(writer.any(), symmetric_key, target_id, raw_message);
         }
     }
 }
 
-fn get_symmetric_key(public_key: std.crypto.ecc.Curve25519, priv_key: [32]u8) ![32]u8 {
+pub fn get_symmetric_key(public_key: std.crypto.ecc.Curve25519, priv_key: [32]u8) ![32]u8 {
     return (try public_key.clampedMul(priv_key)).toBytes();
 }
 
@@ -102,9 +73,7 @@ fn handle_message(reader: std.io.AnyReader, privkey: [32]u8, pubkey: [32]u8) !vo
 
     const author_pubkey = std.crypto.ecc.Curve25519.fromBytes(if (dm) |dm_unwrap| dm_unwrap else author);
 
-    const symmetric_key = try get_symmetric_key(author_pubkey, privkey);
-
-    const decrypted_msg = try message.decrypt_message(symmetric_key, block_count, reader);
+    const decrypted_msg = try message.decrypt_message(block_count, privkey, author_pubkey, reader);
     defer allocator.free(decrypted_msg);
 
     try GUI.handle_new_message(author, dm, decrypted_msg);

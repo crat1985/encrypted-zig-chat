@@ -42,9 +42,8 @@ pub const button_padding = 10;
 // }
 
 pub fn deinit() void {
-    @panic("no no");
-    // C.CloseWindow();
-    // messages.deinit();
+    C.CloseWindow();
+    messages.deinit();
 }
 
 test "Test basic window with text and rectangles" {

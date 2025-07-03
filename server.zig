@@ -1,6 +1,5 @@
 const std = @import("std");
 const Mutex = @import("mutex.zig").Mutex;
-const PacketTarget = @import("paquet.zig").PacketTarget;
 
 const HashMapContext = @import("id_hashmap_ctx.zig").HashMapContext;
 
@@ -55,67 +54,42 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
         const block_count = reader.readInt(u32, .big) catch break; //EOF
 
         const target_id = try reader.readBytesNoEof(32);
-        const users_lock = users.lock();
-        const target_conns = if (std.mem.eql(u8, &target_id, &pubkey)) null else users_lock.get(target_id) orelse {
-            try send_packet(.Other, &.{1}, writer);
-            continue;
-        };
-        const my_conns = users_lock.get(pubkey) orelse {
-            try send_packet(.Other, &.{1}, writer);
-            continue;
-        };
-        //TODO perhaps clone the slices to avoid concurrent modification
-        users.unlock();
-        try send_packet(.Other, &.{0}, writer);
 
-        const message_size = 32 + @as(u64, block_count) * @import("client/message.zig").BLOCK_SIZE;
+        const message_size = 12 + 16 + @as(u64, block_count) * @import("client/message.zig").BLOCK_SIZE;
         const message = try allocator.alloc(u8, message_size);
         defer allocator.free(message);
         try reader.readNoEof(message);
 
         std.log.info("New message of size {d} from user {s}", .{ message_size, std.fmt.bytesToHex(target_id, .lower) });
 
-        const block_count_bytes = blk: {
-            var block_count_bytes: [4]u8 = undefined;
-            std.mem.writeInt(u32, &block_count_bytes, block_count, .big);
-            break :blk block_count_bytes;
-        };
+        const users_lock = users.lock();
+        const target_conns = if (std.mem.eql(u8, &target_id, &pubkey)) null else try allocator.dupe(std.net.Server.Connection, users_lock.get(target_id) orelse {
+            continue;
+        });
+        defer if (target_conns) |conns| allocator.free(conns);
+        const my_conns = try allocator.dupe(std.net.Server.Connection, users_lock.get(pubkey) orelse {
+            continue;
+        });
+        defer allocator.free(my_conns);
+        users.unlock();
 
         if (target_conns) |targets| {
-            const full_packet = try allocator.alloc(u8, 4 + 32 + message.len);
-            defer allocator.free(full_packet);
-
-            @memcpy(full_packet[0..4], &block_count_bytes);
-            @memcpy(full_packet[4 .. 4 + 32], &pubkey);
-            @memcpy(full_packet[4 + 32 ..], message);
-
             for (targets) |target_conn| {
-                const target_writer = target_conn.stream.writer().any();
+                const target_writer = target_conn.stream.writer();
 
-                try send_packet(.NewMessagesListener, full_packet, target_writer);
+                try target_writer.writeInt(u32, block_count, .big);
+                try target_writer.writeAll(&pubkey);
+                try target_writer.writeAll(message);
             }
         }
 
-        const full_myself_paquet = try allocator.alloc(u8, 4 + pubkey.len * 2 + message.len);
-        defer allocator.free(full_myself_paquet);
-        @memcpy(full_myself_paquet[0..4], &block_count_bytes);
-
-        var i: usize = 4;
-        @memcpy(full_myself_paquet[i .. i + 32], &pubkey);
-        i += 32;
-
-        @memcpy(full_myself_paquet[i .. i + 32], &target_id);
-        i += 32;
-
-        @memcpy(full_myself_paquet[i..], message);
-
         for (my_conns) |my_conn| {
-            //TODO not sure if I should send it to the sender
-            // if (my_conn.stream.handle == conn.stream.handle) continue;
+            const target_me_writer = my_conn.stream.writer();
 
-            const target_me_writer = my_conn.stream.writer().any();
-
-            try send_packet(.NewMessagesListener, full_myself_paquet, target_me_writer);
+            try target_me_writer.writeInt(u32, block_count, .big);
+            try target_me_writer.writeAll(&pubkey);
+            try target_me_writer.writeAll(&target_id);
+            try target_me_writer.writeAll(message);
         }
     }
 }
@@ -133,7 +107,10 @@ fn handle_auth(reader: std.io.AnyReader, writer: std.io.AnyWriter) ![32]u8 {
 
     const raw_signature = try reader.readBytesNoEof(64);
     const signature = std.crypto.sign.Ed25519.Signature.fromBytes(raw_signature);
-    try signature.verify(&challenge, pubkey);
+    signature.verify(&challenge, pubkey) catch |err| {
+        try writer.writeByte(1);
+        return err;
+    };
 
     try writer.writeByte(0); //send SUCCESS
 
@@ -179,11 +156,4 @@ fn remove_connection_from_users(pubkey: [32]u8, stream: std.net.Stream) !void {
 
     allocator.free(slice);
     get_entry.value_ptr.* = new_slice;
-}
-
-///must be already encrypted
-fn send_packet(to: PacketTarget, data: []const u8, writer: std.io.AnyWriter) !void {
-    try writer.writeByte(@intFromEnum(to));
-    try writer.writeInt(u64, data.len, .big);
-    try writer.writeAll(data);
 }

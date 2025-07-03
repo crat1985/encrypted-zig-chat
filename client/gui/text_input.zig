@@ -42,9 +42,9 @@ pub fn draw_text_input(align_x: c_int, y: c_int, txt: *[:0]u8, font_size: c_int,
 fn draw_text_input_no_events(align_x: c_int, y: c_int, txt: *[:0]u8, font_size: c_int, alignment: Alignment) void {
     const txt_length = C.MeasureText(txt.ptr, font_size);
 
-    const x1: u64 = switch (alignment) {
-        .Center => @as(u64, @intCast(align_x)) - (@abs(@as(i64, txt_length)) / 2),
-        .Left => @intCast(align_x),
+    const x1 = switch (alignment) {
+        .Center => align_x - @divTrunc(txt_length, 2),
+        .Left => align_x,
     };
 
     C.DrawText(txt.ptr, @intCast(x1), @intCast(y), font_size, C.WHITE);
