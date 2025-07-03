@@ -42,7 +42,7 @@ pub fn ask_message(my_id: [32]u8, dm: [32]u8) ![]u8 {
 
         try draw_message_input_text(&should_continue, &message);
 
-        try draw_messages(my_id_hexz, dm, dm_hexz, y_min_messages);
+        try draw_messages(dm, dm_hexz, y_min_messages);
     }
 
     if (C.WindowShouldClose()) std.process.exit(0);
@@ -64,7 +64,7 @@ fn draw_message_input_text(should_continue: *bool, message: *[:0]u8) !void {
     try txt_input.draw_text_input(enter_message_txt_length + 20, @intCast(GUI.HEIGHT - GUI.FONT_SIZE), message, GUI.FONT_SIZE, .Left);
 }
 
-fn draw_messages(my_id_hexz: [:0]u8, dm: [32]u8, dm_hexz: [:0]u8, y_min_messages: u64) !void {
+fn draw_messages(dm: [32]u8, dm_hexz: [:0]u8, y_min_messages: u64) !void {
     const discussion_messages: []const messages.Message = blk: {
         const msgs_lock = messages.messages.lock();
         defer messages.messages.unlock();
@@ -86,7 +86,7 @@ fn draw_messages(my_id_hexz: [:0]u8, dm: [32]u8, dm_hexz: [:0]u8, y_min_messages
         // defer y_msg_offset -= GUI.FONT_SIZE * 2 + 10;
 
         const author_hexz = switch (discussion_message.sent_by) {
-            .Me => my_id_hexz,
+            .Me => "Me",
             .NotMe => dm_hexz,
         };
 

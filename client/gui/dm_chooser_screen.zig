@@ -32,7 +32,7 @@ pub fn ask_target_id(my_id: [32]u8) ![32]u8 {
         switch (is_manual) {
             true => try ManualScreen.draw_manual_screen(&manual_target_id, &manual_target_id_index, &target_id),
             false => {
-                var y_offset: usize = 0;
+                var y_offset: usize = 25 + 5; //a bit below the y of the manual button
 
                 const messages_lock = messages.messages.lock();
                 defer messages.messages.unlock();
