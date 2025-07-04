@@ -4,6 +4,7 @@ const C = @import("c.zig").C;
 const GUI = @import("../gui.zig");
 const std = @import("std");
 const txt_input = @import("text_input.zig");
+const Font = @import("font.zig");
 
 const TARGET_ID_HEIGHT = 80;
 const SPACE_BETWEEN = 15;
@@ -15,17 +16,22 @@ pub fn ask_target_id(my_id: [32]u8) ![32]u8 {
     var is_manual = false;
     var manual_target_id = std.mem.zeroes([64:0]u8);
     var manual_target_id_index: usize = 0;
+    var cursor = C.MOUSE_CURSOR_DEFAULT;
 
     while (!C.WindowShouldClose() and target_id == null) {
+        cursor = C.MOUSE_CURSOR_DEFAULT;
+
         C.BeginDrawing();
         defer C.EndDrawing();
+
+        defer C.SetMouseCursor(cursor);
 
         C.ClearBackground(C.BLACK);
 
         GUI.WIDTH = @intCast(C.GetScreenWidth());
         GUI.HEIGHT = @intCast(C.GetScreenHeight());
 
-        try @import("id_top_left_display.zig").draw_id_top_left_display(my_id);
+        try @import("id_top_left_display.zig").draw_id_top_left_display(my_id, &cursor);
 
         draw_manual_button(&is_manual);
 
@@ -64,11 +70,11 @@ const ManualScreen = struct {
 
         const txt = "Enter the target ID (hexadecimal) :";
 
-        const txt_length = C.MeasureText(txt, GUI.FONT_SIZE * 2 / 3);
+        const txt_length = Font.measureText(txt, GUI.FONT_SIZE * 2 / 3);
 
         const y_center = @divTrunc(GUI.HEIGHT, 2);
 
-        C.DrawText(txt, @intCast(x_center - @divTrunc(txt_length, 2)), y_center - GUI.FONT_SIZE * 2, GUI.FONT_SIZE * 2 / 3, C.WHITE);
+        Font.drawText(txt, @intCast(x_center - @divTrunc(txt_length, 2)), y_center - GUI.FONT_SIZE * 2, GUI.FONT_SIZE * 2 / 3, C.WHITE);
 
         txt_input.draw_text_input_array(64, x_center, y_center - GUI.FONT_SIZE / 2, manual_target_id, manual_target_id_index, .Center);
 
@@ -77,7 +83,7 @@ const ManualScreen = struct {
 
     fn draw_paste_target_id_button(manual_target_id: *[64:0]u8, manual_target_id_index: *usize, target_id: *?[32]u8) !void {
         const paste_txt = "Paste ID from clipboard";
-        const paste_txt_length = C.MeasureText(paste_txt, GUI.FONT_SIZE * 2 / 3);
+        const paste_txt_length = Font.measureText(paste_txt, GUI.FONT_SIZE * 2 / 3);
 
         const x_center = @divTrunc(GUI.WIDTH, 2);
         const y_center = @divTrunc(GUI.HEIGHT, 2);
@@ -85,9 +91,13 @@ const ManualScreen = struct {
         const paste_txt_rect = C.Rectangle{
             .x = @floatFromInt(x_center - @divTrunc(paste_txt_length, 2)),
             .y = @floatFromInt(y_center),
-            .width = @floatFromInt(paste_txt_length + GUI.FONT_SIZE * 2),
+            .width = @floatFromInt(paste_txt_length),
             .height = @floatFromInt(GUI.FONT_SIZE * 2 / 3),
         };
+
+        var paste_txt_button_rect = paste_txt_rect;
+        paste_txt_button_rect.x -= GUI.FONT_SIZE;
+        paste_txt_button_rect.width += GUI.FONT_SIZE * 2;
 
         var paste_txt_rect_bg_color = C.BLACK;
 
@@ -112,9 +122,9 @@ const ManualScreen = struct {
             }
         }
 
-        C.DrawRectangleRec(paste_txt_rect, paste_txt_rect_bg_color);
+        C.DrawRectangleRec(paste_txt_button_rect, paste_txt_rect_bg_color);
 
-        C.DrawText(paste_txt, @intFromFloat(paste_txt_rect.x), @intFromFloat(paste_txt_rect.y), GUI.FONT_SIZE * 2 / 3, C.WHITE);
+        Font.drawText(paste_txt, @intFromFloat(paste_txt_rect.x), @intFromFloat(paste_txt_rect.y), GUI.FONT_SIZE * 2 / 3, C.WHITE);
     }
 };
 
@@ -181,13 +191,12 @@ fn display_target_id(id: [32]u8, messages_count: usize, y_offset: *usize, target
 
     C.DrawRectangleRec(rect, rect_color);
     const id_hex = std.fmt.bytesToHex(id, .lower);
-    const id_hexz = try allocator.dupeZ(u8, &id_hex);
-    C.DrawText(id_hexz.ptr, GUI.button_padding, @intCast(y_offset.* + GUI.button_padding), GUI.FONT_SIZE, C.WHITE);
+    Font.drawText(&id_hex, GUI.button_padding, @intCast(y_offset.* + GUI.button_padding), GUI.FONT_SIZE, C.WHITE);
 
     const number_of_messages_text: [:0]u8 = try std.fmt.allocPrintZ(allocator, "{d} message(s)", .{messages_count});
     defer allocator.free(number_of_messages_text);
 
-    C.DrawText(number_of_messages_text, GUI.button_padding, @intCast(y_offset.* + GUI.button_padding + GUI.FONT_SIZE), GUI.FONT_SIZE / 2, C.WHITE);
+    Font.drawText(number_of_messages_text, GUI.button_padding, @intCast(y_offset.* + GUI.button_padding + GUI.FONT_SIZE), GUI.FONT_SIZE, C.WHITE);
 
     y_offset.* += TARGET_ID_HEIGHT;
 

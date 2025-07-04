@@ -24,22 +24,6 @@ pub fn init() void {
 pub const FONT_SIZE = 20;
 pub const button_padding = 10;
 
-// fn draw_connected_screen() !void {
-//     const connected_text = "Connected !";
-//     const connected_text_length = C.MeasureText(connected_text, FONT_SIZE);
-
-//     while (!C.WindowShouldClose()) {
-//         C.BeginDrawing();
-//         defer C.EndDrawing();
-//         WIDTH = @intCast(C.GetScreenWidth());
-//         HEIGHT = @intCast(C.GetScreenHeight());
-
-//         C.ClearBackground(C.BLACK);
-
-//         C.DrawText(connected_text, @intCast(WIDTH / 2 - @as(u64, @intCast(connected_text_length)) / 2), @intCast(HEIGHT / 2 - FONT_SIZE / 2), FONT_SIZE, C.GREEN);
-//     }
-// }
-
 pub fn deinit() void {
     C.CloseWindow();
     messages.deinit();

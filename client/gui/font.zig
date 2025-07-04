@@ -8,7 +8,7 @@ pub const SPACING = 0;
 var loaded_fonts: [100]struct { kind: FontKind, size: c_int, font: C.Font } = undefined;
 var loaded_fonts_count: usize = 0;
 
-pub fn getOrLoadFont(kind: FontKind, size: c_int) C.Font {
+fn getOrLoadFont(kind: FontKind, size: c_int) C.Font {
     for (loaded_fonts) |loaded_font| {
         if (loaded_font.kind != kind) continue;
         if (loaded_font.size != size) continue;
@@ -120,38 +120,82 @@ const NotoSansSymbols2Regular = @embedFile("../../fonts/NotoSansSymbols2-Regular
 /// * U+1D800–U+1DAAF
 const NotoSansMathRegular = @embedFile("../../fonts/NotoSansMath-Regular.ttf");
 
-pub fn measureCodepoints(txt: []const c_int, fontSize: c_int) c_int {
-    var total_width: c_int = 0.0;
-
-    for (txt) |codepoint| {
-        const font = getCharFont(codepoint, fontSize);
-        const glyph = C.GetGlyphInfo(font, codepoint);
-        total_width += glyph.advanceX + SPACING;
-    }
-
-    return total_width;
+pub fn measureText(txt: []const u8, fontSize: c_int) c_int {
+    return measureSlice(.{ .Bytes = txt }, fontSize);
 }
 
-pub fn drawCodepoints(txt: []const c_int, fontSize: c_int, x: c_int, y: c_int, tint: C.Color) void {
+pub fn measureCodepoints(txt: []const c_int, fontSize: c_int) c_int {
+    return measureSlice(.{ .Codepoints = txt }, fontSize);
+}
+
+pub fn drawText(txt: []const u8, x: c_int, y: c_int, fontSize: c_int, tint: C.Color) void {
+    return drawSlice(.{ .Bytes = txt }, x, y, fontSize, tint);
+}
+
+pub fn drawCodepoints(txt: []const c_int, x: c_int, y: c_int, fontSize: c_int, tint: C.Color) void {
+    return drawSlice(.{ .Codepoints = txt }, x, y, fontSize, tint);
+}
+
+pub const SliceKind = union(enum(u8)) {
+    Bytes: []const u8,
+    Codepoints: []const c_int,
+};
+
+fn measureSlice(slice_kind: SliceKind, fontSize: c_int) c_int {
+    var max_width: c_int = 0;
+    var y: c_int = fontSize;
+
+    var total_width: c_int = 0;
+
+    switch (slice_kind) {
+        inline else => |txt| for (txt) |codepoint| {
+            switch (codepoint) {
+                '\r' => {
+                    if (total_width > max_width) max_width = total_width;
+                    total_width = 0;
+                    continue;
+                },
+                '\n' => {
+                    if (total_width > max_width) max_width = total_width;
+                    total_width = 0;
+                    y += @divTrunc(fontSize * 5, 4);
+                    continue;
+                },
+                else => {},
+            }
+            const font = getCharFont(codepoint, fontSize);
+            const glyph = C.GetGlyphInfo(font, codepoint);
+            total_width += glyph.advanceX + SPACING;
+        },
+    }
+
+    if (total_width > max_width) max_width = total_width;
+
+    return max_width;
+}
+
+fn drawSlice(kind: SliceKind, x: c_int, y: c_int, fontSize: c_int, tint: C.Color) void {
     var x_offset = x;
     var y_offset = y;
 
-    for (txt) |codepoint| {
-        switch (codepoint) {
-            '\r' => {
-                x_offset = x;
-                continue;
-            },
-            '\n' => {
-                x_offset = x;
-                y_offset += @divTrunc(fontSize * 5, 4);
-                continue;
-            },
-            else => {},
-        }
-        const font = getCharFont(codepoint, fontSize);
-        const glyph = C.GetGlyphInfo(font, codepoint);
-        C.DrawTextCodepoint(font, codepoint, .{ .x = @floatFromInt(x_offset), .y = @floatFromInt(y_offset) }, @floatFromInt(fontSize), tint);
-        x_offset += glyph.advanceX + SPACING;
+    switch (kind) {
+        inline else => |txt| for (txt) |codepoint| {
+            switch (codepoint) {
+                '\r' => {
+                    x_offset = x;
+                    continue;
+                },
+                '\n' => {
+                    x_offset = x;
+                    y_offset += @divTrunc(fontSize * 5, 4);
+                    continue;
+                },
+                else => {},
+            }
+            const font = getCharFont(codepoint, fontSize);
+            const glyph = C.GetGlyphInfo(font, codepoint);
+            C.DrawTextCodepoint(font, codepoint, .{ .x = @floatFromInt(x_offset), .y = @floatFromInt(y_offset) }, @floatFromInt(fontSize), tint);
+            x_offset += glyph.advanceX + SPACING;
+        },
     }
 }

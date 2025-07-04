@@ -11,8 +11,8 @@ pub const Alignment = enum(u8) {
 };
 
 pub const TxtKind = union(enum(u8)) {
-    ASCII: *[:0]u8,
-    UTF8: *[:0]c_int,
+    ASCII: *[]u8,
+    UTF8: *[]c_int,
 };
 
 pub fn draw_text_input_array(comptime n: usize, align_x: c_int, y: c_int, txt: *[n:0]u8, index: *usize, alignment: Alignment) void {
@@ -33,7 +33,7 @@ pub fn draw_text_input_array(comptime n: usize, align_x: c_int, y: c_int, txt: *
         else => |c| std.log.err("Unsupported character {u}", .{@as(u21, @intCast(c))}),
     }
 
-    var txt_mut: [:0]u8 = txt[0..];
+    var txt_mut = txt[0..index.*];
 
     draw_text_input_no_events(align_x, y, .{ .ASCII = &txt_mut }, GUI.FONT_SIZE, alignment);
 }
@@ -47,7 +47,7 @@ pub fn draw_text_input(align_x: c_int, y: c_int, txt: TxtKind, font_size: c_int,
 
 fn draw_text_input_no_events(align_x: c_int, y: c_int, txt: TxtKind, font_size: c_int, alignment: Alignment) void {
     const txt_length = switch (txt) {
-        .ASCII => |txt_ptr| C.MeasureText(txt_ptr.ptr, font_size),
+        .ASCII => |txt_ptr| Font.measureText(txt_ptr.*, font_size),
         .UTF8 => |txt_ptr| Font.measureCodepoints(txt_ptr.*, font_size),
     };
 
@@ -57,8 +57,8 @@ fn draw_text_input_no_events(align_x: c_int, y: c_int, txt: TxtKind, font_size: 
     };
 
     switch (txt) {
-        .ASCII => |txt_ptr| C.DrawText(txt_ptr.ptr, x1, y, font_size, C.WHITE),
-        .UTF8 => |txt_ptr| Font.drawCodepoints(txt_ptr.*, font_size, x1, y, C.WHITE),
+        .ASCII => |txt_ptr| Font.drawText(txt_ptr.*, x1, y, font_size, C.WHITE),
+        .UTF8 => |txt_ptr| Font.drawCodepoints(txt_ptr.*, x1, y, font_size, C.WHITE),
     }
 }
 

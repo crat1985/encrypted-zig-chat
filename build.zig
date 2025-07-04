@@ -53,7 +53,6 @@ fn generate_exe(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.b
     });
 
     if (kind == .client) {
-        exe.addIncludePath(b.path("include"));
         exe.linkSystemLibrary("raylib");
     }
 

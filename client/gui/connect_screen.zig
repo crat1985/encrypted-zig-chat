@@ -2,11 +2,12 @@ const std = @import("std");
 const C = @import("c.zig").C;
 const GUI = @import("../gui.zig");
 const txt_input = @import("text_input.zig");
+const Font = @import("font.zig");
 
 const allocator = std.heap.page_allocator;
 
 pub fn connect_to_server() !std.net.Stream {
-    var server_addr: [:0]u8 = allocator.allocSentinel(u8, 0, 0) catch unreachable;
+    var server_addr = allocator.alloc(u8, 0) catch unreachable;
     var server: ?std.net.Stream = null;
 
     while (!C.WindowShouldClose() and server == null) {
@@ -28,9 +29,9 @@ pub fn connect_to_server() !std.net.Stream {
     return server.?;
 }
 
-fn draw_connect_to_server_screen(server_addr: *[:0]u8, server: *?std.net.Stream) !void {
+fn draw_connect_to_server_screen(server_addr: *[]u8, server: *?std.net.Stream) !void {
     const ConnectButtonText = "Connect";
-    const connect_button_length = C.MeasureText(ConnectButtonText, GUI.FONT_SIZE);
+    const connect_button_length = Font.measureText(ConnectButtonText, GUI.FONT_SIZE);
 
     C.ClearBackground(C.BLACK);
 
@@ -62,12 +63,12 @@ fn draw_connect_to_server_screen(server_addr: *[:0]u8, server: *?std.net.Stream)
     const button_text_x1 = x1_center - @divTrunc(connect_button_length, 2);
     const button_text_y1 = connect_button.y + GUI.button_padding;
 
-    C.DrawText(ConnectButtonText, @intCast(button_text_x1), @intFromFloat(button_text_y1), GUI.FONT_SIZE, C.WHITE);
+    Font.drawText(ConnectButtonText, @intCast(button_text_x1), @intFromFloat(button_text_y1), GUI.FONT_SIZE, C.WHITE);
 }
 
 const DEFAULT_ADDR = std.net.Address.initIp4(.{ 127, 0, 0, 1 }, 8080);
 
-fn connect_to_server_button_clicked(server_addr: *[:0]u8, server: *?std.net.Stream) !void {
+fn connect_to_server_button_clicked(server_addr: *[]u8, server: *?std.net.Stream) !void {
     if (server_addr.len == 0) {
         server.* = std.net.tcpConnectToAddress(DEFAULT_ADDR) catch |err| return std.log.err("Error connecting to the server : {}", .{err});
         return;

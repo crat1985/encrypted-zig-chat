@@ -3,6 +3,7 @@ const C = @import("c.zig").C;
 const txt_input = @import("text_input.zig");
 const GUI = @import("../gui.zig");
 const api = @import("../api.zig");
+const Font = @import("font.zig");
 
 const allocator = std.heap.page_allocator;
 
@@ -19,8 +20,10 @@ pub fn handle_auth(stream: std.net.Stream) !std.crypto.dh.X25519.KeyPair {
         GUI.WIDTH = @intCast(C.GetScreenWidth());
         GUI.HEIGHT = @intCast(C.GetScreenHeight());
 
-        if (C.IsKeyPressed(C.KEY_ENTER) or C.IsKeyPressedRepeat(C.KEY_ENTER)) {
-            try auth(&keypair, stream, passphrase);
+        if (passphrase.len >= 32) {
+            if (C.IsKeyPressed(C.KEY_ENTER) or C.IsKeyPressedRepeat(C.KEY_ENTER)) {
+                try auth(&keypair, stream, passphrase);
+            }
         }
 
         try draw_auth_screen(&passphrase, &keypair, stream);
@@ -34,10 +37,10 @@ pub fn handle_auth(stream: std.net.Stream) !std.crypto.dh.X25519.KeyPair {
 fn draw_auth_screen(passphrase: *[:0]c_int, keypair: *?std.crypto.dh.X25519.KeyPair, stream: std.net.Stream) !void {
     const x_center = @divTrunc(GUI.WIDTH, 2);
 
-    try txt_input.draw_text_input(x_center, @divTrunc(GUI.HEIGHT, 3), .{ .UTF8 = passphrase }, GUI.FONT_SIZE, .Center);
+    try txt_input.draw_text_input(x_center, @divTrunc(GUI.HEIGHT, 3), .{ .UTF8 = @ptrCast(passphrase) }, GUI.FONT_SIZE, .Center);
 
     const auth_button_text = "Authenticate";
-    const auth_button_text_length = C.MeasureText(auth_button_text, GUI.FONT_SIZE);
+    const auth_button_text_length = Font.measureText(auth_button_text, GUI.FONT_SIZE);
 
     const auth_button = C.Rectangle{
         .x = @floatFromInt(x_center - @divTrunc(auth_button_text_length, 2) - GUI.button_padding),
@@ -63,7 +66,7 @@ fn draw_auth_screen(passphrase: *[:0]c_int, keypair: *?std.crypto.dh.X25519.KeyP
     }
 
     C.DrawRectangleRec(auth_button, button_color);
-    C.DrawText(auth_button_text, @intFromFloat(auth_button.x + GUI.button_padding), @intFromFloat(auth_button.y + GUI.button_padding), GUI.FONT_SIZE, C.WHITE);
+    Font.drawText(auth_button_text, @intFromFloat(auth_button.x + GUI.button_padding), @intFromFloat(auth_button.y + GUI.button_padding), GUI.FONT_SIZE, C.WHITE);
 }
 
 fn auth(keypair: *?std.crypto.dh.X25519.KeyPair, stream: std.net.Stream, passphrase: [:0]c_int) !void {
