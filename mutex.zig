@@ -3,19 +3,19 @@ const std = @import("std");
 pub fn Mutex(comptime T: type) type {
     return struct {
         _data: T,
-        owner: std.atomic.Value(u128),
+        owner: std.atomic.Value(u64),
 
         const Self = @This();
 
         pub fn init(data: T) Self {
             return Self{
                 ._data = data,
-                .owner = std.atomic.Value(u128).init(0),
+                .owner = std.atomic.Value(u64).init(0),
             };
         }
 
-        fn get_thread_id() u128 {
-            return (@as(u65, 0b1) << 64) | @as(u64, std.Thread.getCurrentId());
+        fn get_thread_id() u64 {
+            return std.Thread.getCurrentId();
         }
 
         pub fn lock(self: *Self) *T {

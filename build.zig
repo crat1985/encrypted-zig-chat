@@ -2,6 +2,7 @@
 const std = @import("std");
 
 // Although this function looks imperative, it does not perform the build
+
 // directly and instead it mutates the build graph (`b`) that will be then
 // executed by an external runner. The functions in `std.Build` implement a DSL
 // for defining build steps and express dependencies between them, allowing the
@@ -20,8 +21,38 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run tests");
 
-    generate_exe(b, target, optimize, test_step, .server);
-    generate_exe(b, target, optimize, test_step, .client);
+    _ = generate_exe(b, target, optimize, test_step, .server);
+    const client_exe = generate_exe(b, target, optimize, test_step, .client);
+
+    setup_raylib(b, target, optimize, client_exe);
+}
+
+fn setup_raylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, exe: *std.Build.Step.Compile) void {
+    // const raylib_dep = b.dependency("raylib", .{ .target = target, .optimize = optimize });
+
+    // exe.addCSourceFile(.{ .file = raylib_dep.path("src/*.c"), .flags = &.{"-DRAYLIB_STATIC"} });
+    // exe.addIncludePath(raylib_dep.path("src"));
+
+    // if (target.result.os.tag == .windows) {
+    //     exe.linkSystemLibrary("opengl32");
+    //     exe.linkSystemLibrary("gdi32");
+    //     exe.linkSystemLibrary("user32");
+    //     exe.linkSystemLibrary("kernel32");
+    // } else if (target.result.os.tag == .linux) {
+    //     exe.linkSystemLibrary("GL");
+    //     exe.linkSystemLibrary("X11");
+    //     exe.linkSystemLibrary("pthread");
+    //     exe.linkSystemLibrary("m");
+    //     exe.linkSystemLibrary("dl");
+    // }
+
+    const raylib_dep = b.dependency("raylib", .{
+        .target = target,
+        .optimize = optimize,
+        // .platform = .drm,
+    });
+    const raylib = raylib_dep.artifact("raylib");
+    exe.linkLibrary(raylib);
 }
 
 const ExeKind = enum(u8) {
@@ -29,7 +60,7 @@ const ExeKind = enum(u8) {
     client,
 };
 
-fn generate_exe(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, test_step: *std.Build.Step, comptime kind: ExeKind) void {
+fn generate_exe(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, test_step: *std.Build.Step, comptime kind: ExeKind) *std.Build.Step.Compile {
     const name = @tagName(kind);
 
     const exe = b.addExecutable(.{
@@ -52,9 +83,9 @@ fn generate_exe(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.b
         }),
     });
 
-    if (kind == .client) {
-        exe.linkSystemLibrary("raylib");
-    }
+    // if (kind == .client) {
+    //     exe.linkSystemLibrary("raylib");
+    // }
 
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
@@ -115,4 +146,6 @@ fn generate_exe(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.b
     //
     // Lastly, the Zig build system is relatively simple and self-contained,
     // and reading its source code will allow you to master it.
+
+    return exe;
 }
