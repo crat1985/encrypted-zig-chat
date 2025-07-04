@@ -53,6 +53,8 @@ pub fn ask_target_id(my_id: [32]u8) ![32]u8 {
 
 const ManualScreen = struct {
     pub fn draw_manual_screen(manual_target_id: *[64:0]u8, manual_target_id_index: *usize, target_id: *?[32]u8) !void {
+        const x_center = @divTrunc(GUI.WIDTH, 2);
+
         if (manual_target_id_index.* + 1 == manual_target_id.len) {
             if (C.IsKeyPressed(C.KEY_ENTER) or C.IsKeyPressedRepeat(C.KEY_ENTER)) {
                 try set_target_id(target_id, manual_target_id.*);
@@ -64,9 +66,11 @@ const ManualScreen = struct {
 
         const txt_length = C.MeasureText(txt, GUI.FONT_SIZE * 2 / 3);
 
-        C.DrawText(txt, @intCast(GUI.WIDTH / 2 - @as(u64, @intCast(txt_length)) / 2), @intCast(GUI.HEIGHT / 2 - GUI.FONT_SIZE * 2), GUI.FONT_SIZE * 2 / 3, C.WHITE);
+        const y_center = @divTrunc(GUI.HEIGHT, 2);
 
-        txt_input.draw_text_input_array(64, @intCast(GUI.WIDTH / 2), @intCast(GUI.HEIGHT / 2 - GUI.FONT_SIZE / 2), manual_target_id, manual_target_id_index, .Center);
+        C.DrawText(txt, @intCast(x_center - @divTrunc(txt_length, 2)), y_center - GUI.FONT_SIZE * 2, GUI.FONT_SIZE * 2 / 3, C.WHITE);
+
+        txt_input.draw_text_input_array(64, x_center, y_center - GUI.FONT_SIZE / 2, manual_target_id, manual_target_id_index, .Center);
 
         try ManualScreen.draw_paste_target_id_button(manual_target_id, manual_target_id_index, target_id);
     }
@@ -75,10 +79,13 @@ const ManualScreen = struct {
         const paste_txt = "Paste ID from clipboard";
         const paste_txt_length = C.MeasureText(paste_txt, GUI.FONT_SIZE * 2 / 3);
 
+        const x_center = @divTrunc(GUI.WIDTH, 2);
+        const y_center = @divTrunc(GUI.HEIGHT, 2);
+
         const paste_txt_rect = C.Rectangle{
-            .x = @floatFromInt(GUI.WIDTH / 2 - @as(u64, @intCast(paste_txt_length)) / 2),
-            .y = @floatFromInt(GUI.HEIGHT / 2 + GUI.FONT_SIZE * 2),
-            .width = @floatFromInt(paste_txt_length),
+            .x = @floatFromInt(x_center - @divTrunc(paste_txt_length, 2)),
+            .y = @floatFromInt(y_center),
+            .width = @floatFromInt(paste_txt_length + GUI.FONT_SIZE * 2),
             .height = @floatFromInt(GUI.FONT_SIZE * 2 / 3),
         };
 

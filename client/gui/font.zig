@@ -1,5 +1,8 @@
 const C = @import("c.zig").C;
+const std = @import("std");
+const GUI = @import("../gui.zig");
 
+// pub const SPACING = GUI.FONT_SIZE / 10;
 pub const SPACING = 0;
 
 var loaded_fonts: [100]struct { kind: FontKind, size: c_int, font: C.Font } = undefined;
@@ -20,14 +23,15 @@ pub fn getOrLoadFont(kind: FontKind, size: c_int) C.Font {
     };
 
     //TODO perhaps handle "index out of range" error better
-    const new_font = C.LoadFontFromMemory(".ttf", font_data, font_data.len, size, null, 0);
-    loaded_fonts[loaded_fonts.len] = new_font;
+    const new_font = C.LoadFontFromMemory(".ttf", font_data, @intCast(font_data.len), size, null, 1000);
+    loaded_fonts[loaded_fonts_count] = .{ .kind = kind, .size = size, .font = new_font };
     loaded_fonts_count += 1;
     return new_font;
 }
 
 pub fn getCharFont(c: c_int, size: c_int) C.Font {
-    const font_kind = switch (c) {
+    const c_u21: u21 = @intCast(c);
+    const font_kind = switch (c_u21) {
         0...0x7F,
         0x80...0xFF,
         0x100...0x17F,
@@ -59,12 +63,13 @@ pub fn getCharFont(c: c_int, size: c_int) C.Font {
         0x1F200...0x1F2FF,
         0x1F300...0x1F5FF,
         => FontKind.Symbols2Regular,
-        0x2200...0x22FF,
+        // 0x2200...0x22FF,
         0x27C0...0x27EF,
         0x2980...0x29FF,
         0x1D400...0x1D7FF,
         0x1D800...0x1DAAF,
         => FontKind.SansMathRegular,
+        else => std.debug.panic("Unsupported characteur `{u}`", .{c_u21}),
     };
 
     return getOrLoadFont(font_kind, size);
@@ -116,15 +121,15 @@ const NotoSansSymbols2Regular = @embedFile("../../fonts/NotoSansSymbols2-Regular
 const NotoSansMathRegular = @embedFile("../../fonts/NotoSansMath-Regular.ttf");
 
 pub fn measureCodepoints(txt: []const c_int, fontSize: c_int) c_int {
-    var total_width: f32 = 0.0;
+    var total_width: c_int = 0.0;
 
     for (txt) |codepoint| {
         const font = getCharFont(codepoint, fontSize);
         const glyph = C.GetGlyphInfo(font, codepoint);
-        total_width += @as(f32, @floatFromInt(glyph.advanceX)) + SPACING;
+        total_width += glyph.advanceX + SPACING;
     }
 
-    return @intFromFloat(total_width);
+    return total_width;
 }
 
 pub fn drawCodepoints(txt: []const c_int, fontSize: c_int, x: c_int, y: c_int, tint: C.Color) void {
@@ -146,7 +151,7 @@ pub fn drawCodepoints(txt: []const c_int, fontSize: c_int, x: c_int, y: c_int, t
         }
         const font = getCharFont(codepoint, fontSize);
         const glyph = C.GetGlyphInfo(font, codepoint);
-        C.DrawTextCodepoint(font, codepoint, .{ .x = x_offset, .y = y_offset }, @floatFromInt(fontSize), tint);
-        x_offset += glyph.advanceX;
+        C.DrawTextCodepoint(font, codepoint, .{ .x = @floatFromInt(x_offset), .y = @floatFromInt(y_offset) }, @floatFromInt(fontSize), tint);
+        x_offset += glyph.advanceX + SPACING;
     }
 }

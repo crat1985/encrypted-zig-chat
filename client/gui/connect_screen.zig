@@ -34,12 +34,12 @@ fn draw_connect_to_server_screen(server_addr: *[:0]u8, server: *?std.net.Stream)
 
     C.ClearBackground(C.BLACK);
 
-    const x1_center = GUI.WIDTH / 2;
-    const y1 = GUI.HEIGHT / 3;
-    try txt_input.draw_text_input(@intCast(x1_center), @intCast(y1), server_addr, GUI.FONT_SIZE, .Center);
+    const x1_center = @divTrunc(GUI.WIDTH, 2);
+    const y1 = @divTrunc(GUI.HEIGHT, 3);
+    try txt_input.draw_text_input(@intCast(x1_center), @intCast(y1), .{ .ASCII = server_addr }, GUI.FONT_SIZE, .Center);
 
     const connect_button = C.Rectangle{
-        .x = @floatFromInt((GUI.WIDTH / 2) - (@abs(@as(i64, connect_button_length)) / 2) - GUI.button_padding),
+        .x = @floatFromInt(x1_center - @divTrunc(connect_button_length, 2) - GUI.button_padding),
         .y = @floatFromInt(y1 + GUI.FONT_SIZE + 20),
         .width = @floatFromInt(connect_button_length + GUI.button_padding * 2),
         .height = @floatFromInt(GUI.FONT_SIZE + GUI.button_padding * 2),
@@ -59,7 +59,7 @@ fn draw_connect_to_server_screen(server_addr: *[:0]u8, server: *?std.net.Stream)
 
     C.DrawRectangleRec(connect_button, button_color);
 
-    const button_text_x1 = (GUI.WIDTH / 2) - (@abs(@as(i64, connect_button_length)) / 2);
+    const button_text_x1 = x1_center - @divTrunc(connect_button_length, 2);
     const button_text_y1 = connect_button.y + GUI.button_padding;
 
     C.DrawText(ConnectButtonText, @intCast(button_text_x1), @intFromFloat(button_text_y1), GUI.FONT_SIZE, C.WHITE);

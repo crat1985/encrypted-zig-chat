@@ -8,7 +8,7 @@ const allocator = std.heap.page_allocator;
 
 pub fn handle_auth(stream: std.net.Stream) !std.crypto.dh.X25519.KeyPair {
     var keypair: ?std.crypto.dh.X25519.KeyPair = null;
-    var passphrase: [:0]u8 = try allocator.allocSentinel(u8, 0, 0);
+    var passphrase: [:0]c_int = try allocator.allocSentinel(c_int, 0, 0);
 
     while (!C.WindowShouldClose() and keypair == null) {
         C.BeginDrawing();
@@ -31,15 +31,17 @@ pub fn handle_auth(stream: std.net.Stream) !std.crypto.dh.X25519.KeyPair {
     return keypair.?;
 }
 
-fn draw_auth_screen(passphrase: *[:0]u8, keypair: *?std.crypto.dh.X25519.KeyPair, stream: std.net.Stream) !void {
-    try txt_input.draw_text_input(@intCast(GUI.WIDTH / 2), @intCast(GUI.HEIGHT / 3), passphrase, GUI.FONT_SIZE, .Center);
+fn draw_auth_screen(passphrase: *[:0]c_int, keypair: *?std.crypto.dh.X25519.KeyPair, stream: std.net.Stream) !void {
+    const x_center = @divTrunc(GUI.WIDTH, 2);
+
+    try txt_input.draw_text_input(x_center, @divTrunc(GUI.HEIGHT, 3), .{ .UTF8 = passphrase }, GUI.FONT_SIZE, .Center);
 
     const auth_button_text = "Authenticate";
     const auth_button_text_length = C.MeasureText(auth_button_text, GUI.FONT_SIZE);
 
     const auth_button = C.Rectangle{
-        .x = @floatFromInt((GUI.WIDTH / 2) - @as(u64, @intCast(auth_button_text_length)) / 2 - GUI.button_padding),
-        .y = @floatFromInt(GUI.HEIGHT / 3 + GUI.FONT_SIZE + 20),
+        .x = @floatFromInt(x_center - @divTrunc(auth_button_text_length, 2) - GUI.button_padding),
+        .y = @floatFromInt(@divTrunc(GUI.HEIGHT, 3) + GUI.FONT_SIZE + 20),
         .width = @floatFromInt(auth_button_text_length + GUI.button_padding * 2),
         .height = GUI.FONT_SIZE + GUI.button_padding * 2,
     };
@@ -64,8 +66,12 @@ fn draw_auth_screen(passphrase: *[:0]u8, keypair: *?std.crypto.dh.X25519.KeyPair
     C.DrawText(auth_button_text, @intFromFloat(auth_button.x + GUI.button_padding), @intFromFloat(auth_button.y + GUI.button_padding), GUI.FONT_SIZE, C.WHITE);
 }
 
-fn auth(keypair: *?std.crypto.dh.X25519.KeyPair, stream: std.net.Stream, passphrase: []u8) !void {
-    const derived = try @import("../crypto.zig").derive(passphrase);
+fn auth(keypair: *?std.crypto.dh.X25519.KeyPair, stream: std.net.Stream, passphrase: [:0]c_int) !void {
+    const passphrase_utf8 = C.LoadUTF8(passphrase.ptr, @intCast(passphrase.len));
+    defer C.UnloadUTF8(passphrase_utf8);
+    const len: u64 = @intCast(C.TextLength(passphrase_utf8));
+
+    const derived = try @import("../crypto.zig").derive(passphrase_utf8[0..len]);
 
     keypair.* = try api.auth(stream, derived);
 }

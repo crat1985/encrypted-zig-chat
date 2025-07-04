@@ -7,8 +7,8 @@ pub const handle_new_message = messages.handle_new_message;
 pub const ask_target_id = @import("gui/dm_chooser_screen.zig").ask_target_id;
 pub const ask_message = @import("gui/dm_screen.zig").ask_message;
 
-pub var WIDTH: u64 = 720;
-pub var HEIGHT: u64 = 480;
+pub var WIDTH: c_int = 720;
+pub var HEIGHT: c_int = 480;
 
 const allocator = std.heap.page_allocator;
 
@@ -21,8 +21,7 @@ pub fn init() void {
     C.ClearBackground(C.BLACK);
 }
 
-// pub const FONT_SIZE = 20;
-pub const FONT_SIZE = 10;
+pub const FONT_SIZE = 20;
 pub const button_padding = 10;
 
 // fn draw_connected_screen() !void {

@@ -3,11 +3,13 @@ const GUI = @import("../gui.zig");
 const messages = @import("messages.zig");
 const txt_input = @import("text_input.zig");
 const std = @import("std");
+const Font = @import("font.zig");
 
 const allocator = std.heap.page_allocator;
 
 pub fn ask_message(my_id: [32]u8, dm: [32]u8) ![]u8 {
-    var message = try allocator.allocSentinel(u8, 0, 0);
+    var message = try allocator.allocSentinel(c_int, 0, 0);
+    defer allocator.free(message);
 
     const my_id_hexz = try std.fmt.allocPrintZ(allocator, "{s}", .{std.fmt.bytesToHex(my_id, .lower)});
     defer allocator.free(my_id_hexz);
@@ -17,7 +19,7 @@ pub fn ask_message(my_id: [32]u8, dm: [32]u8) ![]u8 {
     const dm_with_txt = try std.fmt.allocPrintZ(allocator, "DM with {s}", .{dm_hexz});
     defer allocator.free(dm_with_txt);
 
-    const dm_with_txt_length: u32 = @intCast(C.MeasureText(dm_with_txt, GUI.FONT_SIZE));
+    const dm_with_txt_length = C.MeasureText(dm_with_txt, GUI.FONT_SIZE);
 
     var should_continue = true;
 
@@ -36,7 +38,7 @@ pub fn ask_message(my_id: [32]u8, dm: [32]u8) ![]u8 {
 
         var y_min_messages: u64 = 25 + 10;
 
-        C.DrawText(dm_with_txt, @intCast(GUI.WIDTH / 2 - dm_with_txt_length / 2), @intCast(y_min_messages), GUI.FONT_SIZE, C.WHITE);
+        C.DrawText(dm_with_txt, @divTrunc(GUI.WIDTH, 2) - @divTrunc(dm_with_txt_length, 2), @intCast(y_min_messages), GUI.FONT_SIZE, C.WHITE);
 
         y_min_messages += GUI.FONT_SIZE + 5;
 
@@ -47,10 +49,16 @@ pub fn ask_message(my_id: [32]u8, dm: [32]u8) ![]u8 {
 
     if (C.WindowShouldClose()) std.process.exit(0);
 
-    return message;
+    const msg_utf8_raylib = C.LoadUTF8(message.ptr, @intCast(message.len));
+    defer C.UnloadUTF8(msg_utf8_raylib);
+    const n = C.TextLength(msg_utf8_raylib);
+    const message_utf8 = try allocator.alloc(u8, n);
+    @memcpy(message_utf8, msg_utf8_raylib);
+
+    return message_utf8;
 }
 
-fn draw_message_input_text(should_continue: *bool, message: *[:0]u8) !void {
+fn draw_message_input_text(should_continue: *bool, message: *[:0]c_int) !void {
     const enter_message_txt = "Enter message :";
     const enter_message_txt_length = C.MeasureText(enter_message_txt, GUI.FONT_SIZE);
     C.DrawText(enter_message_txt, 0, @intCast(GUI.HEIGHT - GUI.FONT_SIZE), GUI.FONT_SIZE, C.WHITE);
@@ -61,7 +69,7 @@ fn draw_message_input_text(should_continue: *bool, message: *[:0]u8) !void {
         }
     }
 
-    try txt_input.draw_text_input(enter_message_txt_length + 20, @intCast(GUI.HEIGHT - GUI.FONT_SIZE), message, GUI.FONT_SIZE, .Left);
+    try txt_input.draw_text_input(enter_message_txt_length + 20, @intCast(GUI.HEIGHT - GUI.FONT_SIZE), .{ .UTF8 = message }, GUI.FONT_SIZE, .Left);
 }
 
 fn draw_messages(dm: [32]u8, dm_hexz: [:0]u8, y_min_messages: u64) !void {
@@ -90,9 +98,12 @@ fn draw_messages(dm: [32]u8, dm_hexz: [:0]u8, y_min_messages: u64) !void {
             .NotMe => dm_hexz,
         };
 
-        C.DrawText(discussion_message.content, 5, @intCast(y_msg_offset), GUI.FONT_SIZE, C.WHITE);
+        var len: c_int = undefined;
+        const msg_content_codepoints = C.LoadCodepoints(discussion_message.content.ptr, &len);
+        defer C.UnloadCodepoints(msg_content_codepoints);
+        Font.drawCodepoints(msg_content_codepoints[0..@intCast(len)], GUI.FONT_SIZE, 5, @intCast(y_msg_offset), C.WHITE);
 
-        y_msg_offset -= GUI.FONT_SIZE / 2 + 5;
+        y_msg_offset -= GUI.FONT_SIZE + 5;
 
         C.DrawText(author_hexz, 5, @intCast(y_msg_offset), GUI.FONT_SIZE, C.BLUE);
 
