@@ -59,7 +59,7 @@ pub fn ask_message(my_id: [32]u8, dm: [32]u8) ![]u8 {
     defer C.UnloadUTF8(msg_utf8_raylib);
     const n = C.TextLength(msg_utf8_raylib);
     const message_utf8 = try allocator.alloc(u8, n);
-    @memcpy(message_utf8, msg_utf8_raylib);
+    @memcpy(message_utf8, msg_utf8_raylib[0..n]);
 
     return message_utf8;
 }

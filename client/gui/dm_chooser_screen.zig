@@ -116,7 +116,7 @@ const ManualScreen = struct {
                     return;
                 }
 
-                @memcpy(manual_target_id, clipboard_data);
+                @memcpy(manual_target_id, clipboard_data[0..64]);
                 manual_target_id_index.* = manual_target_id.len - 1;
                 try set_target_id(target_id, manual_target_id.*);
             }
