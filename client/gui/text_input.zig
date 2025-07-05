@@ -16,19 +16,21 @@ pub const TxtKind = union(enum(u8)) {
 };
 
 pub fn draw_text_input_array(comptime n: usize, align_x: c_int, y: c_int, txt: *[n:0]u8, index: *usize, alignment: Alignment) void {
-    if (C.IsKeyPressed(C.KEY_DELETE) or C.IsKeyPressedRepeat(C.KEY_DELETE)) blk: {
+    if (C.IsKeyPressed(C.KEY_BACKSPACE) or C.IsKeyPressedRepeat(C.KEY_BACKSPACE)) blk: {
         if (index.* == 0) break :blk;
         index.* -= 1;
     }
 
-    if (index.* == n) return;
-
     switch (C.GetCharPressed()) {
         0 => {},
-        1...127 => |c| {
+        'a'...'z', 'A'...'Z', '0'...'9' => |c| {
             const ascii_c: u8 = @intCast(c);
-            txt.*[index.*] = ascii_c;
-            index.* += 1;
+
+            //TODO perhaps add a sound to say "no space left"
+            if (index.* < n) {
+                txt.*[index.*] = ascii_c;
+                index.* += 1;
+            }
         },
         else => |c| std.log.err("Unsupported character {u}", .{@as(u21, @intCast(c))}),
     }

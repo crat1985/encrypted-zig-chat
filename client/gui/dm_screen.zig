@@ -107,7 +107,7 @@ fn draw_messages(dm: [32]u8, dm_hexz: [:0]u8, y_min_messages: u64) !void {
         var len: c_int = undefined;
         const msg_content_codepoints = C.LoadCodepoints(discussion_message.content.ptr, &len);
         defer C.UnloadCodepoints(msg_content_codepoints);
-        Font.drawCodepoints(msg_content_codepoints[0..@intCast(len)], 5, @intCast(y_msg_offset), GUI.FONT_SIZE, C.WHITE);
+        Font.drawCodepoints(msg_content_codepoints[0..@intCast(len)], 5, y_msg_offset, GUI.FONT_SIZE, C.WHITE);
 
         y_msg_offset -= GUI.FONT_SIZE + 5;
 

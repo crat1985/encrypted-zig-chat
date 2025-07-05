@@ -28,8 +28,8 @@ pub fn ask_target_id(my_id: [32]u8) ![32]u8 {
 
         C.ClearBackground(C.BLACK);
 
-        GUI.WIDTH = @intCast(C.GetScreenWidth());
-        GUI.HEIGHT = @intCast(C.GetScreenHeight());
+        GUI.WIDTH = C.GetScreenWidth();
+        GUI.HEIGHT = C.GetScreenHeight();
 
         try @import("id_top_left_display.zig").draw_id_top_left_display(my_id, &cursor);
 
@@ -61,8 +61,8 @@ const ManualScreen = struct {
     pub fn draw_manual_screen(manual_target_id: *[64:0]u8, manual_target_id_index: *usize, target_id: *?[32]u8) !void {
         const x_center = @divTrunc(GUI.WIDTH, 2);
 
-        if (manual_target_id_index.* + 1 == manual_target_id.len) {
-            if (C.IsKeyPressed(C.KEY_ENTER) or C.IsKeyPressedRepeat(C.KEY_ENTER)) {
+        if (manual_target_id_index.* == manual_target_id.len) {
+            if (C.IsKeyPressed(C.KEY_ENTER)) {
                 try set_target_id(target_id, manual_target_id.*);
                 return;
             }
@@ -74,7 +74,7 @@ const ManualScreen = struct {
 
         const y_center = @divTrunc(GUI.HEIGHT, 2);
 
-        Font.drawText(txt, @intCast(x_center - @divTrunc(txt_length, 2)), y_center - GUI.FONT_SIZE * 2, GUI.FONT_SIZE * 2 / 3, C.WHITE);
+        Font.drawText(txt, x_center - @divTrunc(txt_length, 2), y_center - GUI.FONT_SIZE * 2, GUI.FONT_SIZE * 2 / 3, C.WHITE);
 
         txt_input.draw_text_input_array(64, x_center, y_center - GUI.FONT_SIZE / 2, manual_target_id, manual_target_id_index, .Center);
 
@@ -90,7 +90,7 @@ const ManualScreen = struct {
 
         const paste_txt_rect = C.Rectangle{
             .x = @floatFromInt(x_center - @divTrunc(paste_txt_length, 2)),
-            .y = @floatFromInt(y_center),
+            .y = @floatFromInt(y_center + GUI.FONT_SIZE),
             .width = @floatFromInt(paste_txt_length),
             .height = @floatFromInt(GUI.FONT_SIZE * 2 / 3),
         };
@@ -117,8 +117,9 @@ const ManualScreen = struct {
                 }
 
                 @memcpy(manual_target_id, clipboard_data[0..64]);
-                manual_target_id_index.* = manual_target_id.len - 1;
+                manual_target_id_index.* = manual_target_id.len;
                 try set_target_id(target_id, manual_target_id.*);
+                return;
             }
         }
 
@@ -162,9 +163,11 @@ fn draw_manual_button(is_manual: *bool) void {
 }
 
 fn set_target_id(target_id_ptr: *?[32]u8, target_id: [64]u8) !void {
-    target_id_ptr.* = undefined;
+    var target_id_unwrap: [32]u8 = undefined;
 
-    _ = try std.fmt.hexToBytes(&target_id_ptr.*.?, &target_id);
+    _ = try std.fmt.hexToBytes(&target_id_unwrap, &target_id);
+
+    target_id_ptr.* = target_id_unwrap;
 }
 
 fn display_target_id(id: [32]u8, messages_count: usize, y_offset: *usize, target_id: *?[32]u8) !void {

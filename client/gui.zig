@@ -22,6 +22,8 @@ pub fn init() void {
 
     C.InitWindow(@intCast(WIDTH), @intCast(HEIGHT), "Encrypted Zig chat");
 
+    C.SetTargetFPS(60);
+
     C.InitAudioDevice();
 
     const wave = C.LoadWaveFromMemory(".mp3", NEW_MESSAGE_SOUND_FILE_CONTENT, NEW_MESSAGE_SOUND_FILE_CONTENT.len);

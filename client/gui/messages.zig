@@ -61,7 +61,7 @@ pub fn handle_new_message(author: [32]u8, dm: ?[32]u8, message: []const u8) !voi
 
     std.log.info("New message received : {s}", .{owned_message});
 
-    if (sender == .Me) {
+    if (sender != .Me) {
         const C = @import("c.zig").C;
 
         C.PlaySound(GUI.NEW_MESSAGE_NOTIFICATION_SOUND);
