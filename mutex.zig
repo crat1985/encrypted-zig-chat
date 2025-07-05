@@ -20,14 +20,20 @@ pub fn Mutex(comptime T: type) type {
 
         pub fn lock(self: *Self) *T {
             const thread_id = Self.get_thread_id();
-            _ = self.owner.cmpxchgStrong(0, thread_id, .seq_cst, .seq_cst);
+            while (true) {
+                const result = self.owner.cmpxchgStrong(0, thread_id, .seq_cst, .seq_cst);
+                if (result) |_| break;
+            }
 
             return &self._data;
         }
 
         pub fn unlock(self: *Self) void {
             const thread_id = Self.get_thread_id();
-            _ = self.owner.cmpxchgStrong(thread_id, 0, .seq_cst, .seq_cst);
+            while (true) {
+                const result = self.owner.cmpxchgStrong(thread_id, 0, .seq_cst, .seq_cst);
+                if (result) |_| break;
+            }
         }
     };
 }
