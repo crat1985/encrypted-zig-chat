@@ -18,13 +18,15 @@ pub fn init() void {
     C.SetExitKey(C.KEY_NULL);
 
     C.InitWindow(@intCast(WIDTH), @intCast(HEIGHT), "Encrypted Zig chat");
-    C.ClearBackground(C.BLACK);
+
+    C.InitAudioDevice();
 }
 
 pub const FONT_SIZE = 20;
 pub const button_padding = 10;
 
 pub fn deinit() void {
+    C.CloseAudioDevice();
     C.CloseWindow();
     messages.deinit();
 }

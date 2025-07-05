@@ -51,6 +51,8 @@ pub fn deinit() void {
     messages._data.deinit();
 }
 
+const NEW_MESSAGE_SOUND = @embedFile("media/new-notification.mp3");
+
 ///`dm` is set when the author is myself, to someone else
 pub fn handle_new_message(author: [32]u8, dm: ?[32]u8, message: []const u8) !void {
     const discussion_id = if (dm) |dm_id| dm_id else author;
@@ -59,6 +61,13 @@ pub fn handle_new_message(author: [32]u8, dm: ?[32]u8, message: []const u8) !voi
     const owned_message = try allocator.dupeZ(u8, message);
 
     std.log.info("New message received : {s}", .{owned_message});
+
+    if (sender == .Me) {
+        const C = @import("c.zig").C;
+        const wave = C.LoadWaveFromMemory(".mp3", NEW_MESSAGE_SOUND, NEW_MESSAGE_SOUND.len);
+        const sound = C.LoadSoundFromWave(wave);
+        C.PlaySound(sound);
+    }
 
     try insert_message(discussion_id, .{ .content = owned_message, .sent_by = sender });
 }

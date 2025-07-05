@@ -1,5 +1,4 @@
 const std = @import("std");
-const Mutex = @import("mutex.zig").Mutex;
 const api = @import("client/api.zig");
 const message = @import("client/message.zig");
 const GUI = @import("client/gui.zig");

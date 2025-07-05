@@ -28,30 +28,16 @@ pub fn build(b: *std.Build) void {
 }
 
 fn setup_raylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, exe: *std.Build.Step.Compile) void {
-    // const raylib_dep = b.dependency("raylib", .{ .target = target, .optimize = optimize });
-
-    // exe.addCSourceFile(.{ .file = raylib_dep.path("src/*.c"), .flags = &.{"-DRAYLIB_STATIC"} });
-    // exe.addIncludePath(raylib_dep.path("src"));
-
-    // if (target.result.os.tag == .windows) {
-    //     exe.linkSystemLibrary("opengl32");
-    //     exe.linkSystemLibrary("gdi32");
-    //     exe.linkSystemLibrary("user32");
-    //     exe.linkSystemLibrary("kernel32");
-    // } else if (target.result.os.tag == .linux) {
-    //     exe.linkSystemLibrary("GL");
-    //     exe.linkSystemLibrary("X11");
-    //     exe.linkSystemLibrary("pthread");
-    //     exe.linkSystemLibrary("m");
-    //     exe.linkSystemLibrary("dl");
-    // }
-
     const raylib_dep = b.dependency("raylib", .{
         .target = target,
         .optimize = optimize,
+        .android_api_version = @as([]const u8, "24"),
+        .opengl_version = .auto,
         // .platform = .drm,
     });
+
     const raylib = raylib_dep.artifact("raylib");
+
     exe.linkLibrary(raylib);
 }
 
