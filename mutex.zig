@@ -3,37 +3,25 @@ const std = @import("std");
 pub fn Mutex(comptime T: type) type {
     return struct {
         _data: T,
-        owner: std.atomic.Value(u64),
+        inner_mutex: std.Thread.Mutex,
 
         const Self = @This();
 
         pub fn init(data: T) Self {
             return Self{
                 ._data = data,
-                .owner = std.atomic.Value(u64).init(0),
+                .inner_mutex = .{},
             };
         }
 
-        fn get_thread_id() u64 {
-            return std.Thread.getCurrentId();
-        }
-
         pub fn lock(self: *Self) *T {
-            const thread_id = Self.get_thread_id();
-            while (true) {
-                const result = self.owner.cmpxchgStrong(0, thread_id, .seq_cst, .seq_cst);
-                if (result == null) break;
-                std.time.sleep(1000);
-            }
+            self.inner_mutex.lock();
 
             return &self._data;
         }
 
         pub fn unlock(self: *Self) void {
-            const thread_id = Self.get_thread_id();
-
-            const result = self.owner.cmpxchgStrong(thread_id, 0, .seq_cst, .seq_cst);
-            if (result) |_| std.debug.panic("Thread {d} does not own the Value", .{thread_id});
+            self.inner_mutex.unlock();
         }
     };
 }
