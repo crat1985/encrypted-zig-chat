@@ -12,6 +12,9 @@ pub var HEIGHT: c_int = 480;
 
 const allocator = std.heap.page_allocator;
 
+const NEW_MESSAGE_SOUND_FILE_CONTENT = @embedFile("gui/media/new-notification.mp3");
+pub var NEW_MESSAGE_NOTIFICATION_SOUND: C.Sound = undefined;
+
 pub fn init() void {
     messages.init();
 
@@ -20,12 +23,16 @@ pub fn init() void {
     C.InitWindow(@intCast(WIDTH), @intCast(HEIGHT), "Encrypted Zig chat");
 
     C.InitAudioDevice();
+
+    const wave = C.LoadWaveFromMemory(".mp3", NEW_MESSAGE_SOUND_FILE_CONTENT, NEW_MESSAGE_SOUND_FILE_CONTENT.len);
+    NEW_MESSAGE_NOTIFICATION_SOUND = C.LoadSoundFromWave(wave);
 }
 
 pub const FONT_SIZE = 20;
 pub const button_padding = 10;
 
 pub fn deinit() void {
+    C.UnloadSound(NEW_MESSAGE_NOTIFICATION_SOUND);
     C.CloseAudioDevice();
     C.CloseWindow();
     messages.deinit();
