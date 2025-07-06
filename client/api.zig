@@ -1,4 +1,5 @@
 const std = @import("std");
+const Mutex = @import("../mutex.zig").Mutex;
 
 pub fn auth(stream: std.net.Stream, derived_passphrase: [32]u8) !std.crypto.dh.X25519.KeyPair {
     const ed_key_pair = try std.crypto.sign.Ed25519.KeyPair.generateDeterministic(derived_passphrase);
@@ -24,10 +25,4 @@ pub fn auth(stream: std.net.Stream, derived_passphrase: [32]u8) !std.crypto.dh.X
     }
 
     return try std.crypto.dh.X25519.KeyPair.fromEd25519(ed_key_pair);
-}
-
-pub fn send_message(writer: std.io.AnyWriter, block_count: u32, target_id: [32]u8, encrypted_message: []const u8) !void {
-    try writer.writeInt(u32, block_count, .big);
-    try writer.writeAll(&target_id);
-    try writer.writeAll(encrypted_message);
 }

@@ -47,7 +47,7 @@ pub fn draw_text_input(align_x: c_int, y: c_int, txt: TxtKind, font_size: c_int,
     draw_text_input_no_events(align_x, y, txt, font_size, alignment);
 }
 
-fn draw_text_input_no_events(align_x: c_int, y: c_int, txt: TxtKind, font_size: c_int, alignment: Alignment) void {
+pub fn draw_text_input_no_events(align_x: c_int, y: c_int, txt: TxtKind, font_size: c_int, alignment: Alignment) void {
     const txt_length = switch (txt) {
         .ASCII => |txt_ptr| Font.measureText(txt_ptr.*, font_size),
         .UTF8 => |txt_ptr| Font.measureCodepoints(txt_ptr.*, font_size),

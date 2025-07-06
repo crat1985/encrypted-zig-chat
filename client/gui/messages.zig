@@ -9,13 +9,10 @@ const Mutex = @import("../../mutex.zig").Mutex;
 
 const allocator = std.heap.page_allocator;
 
-pub var messages: Mutex(HashMapType) = undefined;
+pub var messages: HashMapType = undefined;
 
 pub fn insert_message(discussion_id: [32]u8, msg: Message) !void {
-    const messages_lock = messages.lock();
-    defer messages.unlock();
-
-    const entry = try messages_lock.getOrPut(discussion_id);
+    const entry = try messages.getOrPut(discussion_id);
     if (entry.found_existing) {
         try entry.value_ptr.append(msg);
     } else {
@@ -36,11 +33,13 @@ pub const Message = struct {
 };
 
 pub fn init() void {
-    messages = Mutex(HashMapType).init(HashMapType.init(allocator));
+    messages = HashMapType.init(allocator);
 }
 
 pub fn deinit() void {
-    var iterator = messages._data.valueIterator();
+    defer messages.deinit();
+
+    var iterator = messages.valueIterator();
 
     while (iterator.next()) |value| {
         for (value.items) |message| {
@@ -48,24 +47,17 @@ pub fn deinit() void {
         }
         value.deinit();
     }
-
-    messages._data.deinit();
 }
 
 ///`dm` is set when the author is myself, to someone else
-pub fn handle_new_message(author: [32]u8, dm: ?[32]u8, message: []const u8) !void {
-    const discussion_id = if (dm) |dm_id| dm_id else author;
-    const sender = if (dm) |_| DMMessageAuthor.Me else DMMessageAuthor.NotMe;
+pub fn handle_new_message(msg: Message, dm_id: [32]u8) !void {
+    std.log.info("New message received : {s}", .{msg.content});
 
-    const owned_message = try allocator.dupeZ(u8, message);
-
-    std.log.info("New message received : {s}", .{owned_message});
-
-    if (sender != .Me) {
+    if (msg.sent_by != .Me) {
         const C = @import("c.zig").C;
 
         C.PlaySound(GUI.NEW_MESSAGE_NOTIFICATION_SOUND);
     }
 
-    try insert_message(discussion_id, .{ .content = owned_message, .sent_by = sender });
+    try insert_message(dm_id, msg);
 }

@@ -5,65 +5,52 @@ const GUI = @import("../gui.zig");
 const std = @import("std");
 const txt_input = @import("text_input.zig");
 const Font = @import("font.zig");
+const Client = @import("../../client.zig");
 
 const TARGET_ID_HEIGHT = 80;
 const SPACE_BETWEEN = 15;
 
 const allocator = std.heap.page_allocator;
 
-pub fn ask_target_id(my_id: [32]u8) ![32]u8 {
-    var target_id: ?[32]u8 = null;
-    var is_manual = false;
-    var manual_target_id = std.mem.zeroes([64:0]u8);
-    var manual_target_id_index: usize = 0;
-    var cursor = C.MOUSE_CURSOR_DEFAULT;
+pub fn draw_choose_discussion_sidebar(my_id: [32]u8, target_id: *?[32]u8, cursor: *c_int, rect: C.Rectangle, dm_state: *Client.DMState) !void {
+    var y_offset: f32 = 0;
 
-    while (!C.WindowShouldClose() and target_id == null) {
-        cursor = C.MOUSE_CURSOR_DEFAULT;
+    try @import("id_top_left_display.zig").draw_id_top_left_display(my_id, cursor);
+    y_offset += GUI.FONT_SIZE + 10;
 
-        C.BeginDrawing();
-        defer C.EndDrawing();
+    {
+        const manual_button_rect = C.Rectangle{
+            .x = rect.x + rect.width - 20,
+            .y = rect.y + y_offset,
+            .width = 20,
+            .height = 20,
+        };
+        draw_manual_button(dm_state, manual_button_rect);
 
-        defer C.SetMouseCursor(cursor);
-
-        C.ClearBackground(C.BLACK);
-
-        GUI.WIDTH = C.GetScreenWidth();
-        GUI.HEIGHT = C.GetScreenHeight();
-
-        try @import("id_top_left_display.zig").draw_id_top_left_display(my_id, &cursor);
-
-        draw_manual_button(&is_manual);
-
-        switch (is_manual) {
-            true => try ManualScreen.draw_manual_screen(&manual_target_id, &manual_target_id_index, &target_id),
-            false => {
-                var y_offset: usize = 25 + 5; //a bit below the y of the manual button
-
-                const messages_lock = messages.messages.lock();
-                defer messages.messages.unlock();
-
-                var iterator = messages_lock.iterator();
-
-                while (iterator.next()) |discussion| {
-                    try display_target_id(discussion.key_ptr.*, discussion.value_ptr.items.len, &y_offset, &target_id);
-                }
-            },
-        }
+        y_offset += manual_button_rect.height + 5;
     }
 
-    if (C.WindowShouldClose()) std.process.exit(0);
+    switch (dm_state.*) {
+        .Manual => |*manual_data| try ManualScreen.draw_manual_screen(&manual_data.manual_target_id, &manual_data.manual_target_id_index, target_id, rect, dm_state),
+        .NotManual => {
+            const messages_lock = &messages.messages;
 
-    return target_id.?;
+            var iterator = messages_lock.iterator();
+
+            while (iterator.next()) |discussion| {
+                try display_target_id(discussion.key_ptr.*, discussion.value_ptr.items.len, &y_offset, target_id, rect);
+            }
+        },
+    }
 }
 
 const ManualScreen = struct {
-    pub fn draw_manual_screen(manual_target_id: *[64:0]u8, manual_target_id_index: *usize, target_id: *?[32]u8) !void {
-        const x_center = @divTrunc(GUI.WIDTH, 2);
+    pub fn draw_manual_screen(manual_target_id: *[64:0]u8, manual_target_id_index: *usize, target_id: *?[32]u8, bounds: C.Rectangle, dm_state: *Client.DMState) !void {
+        const x_center: c_int = @intFromFloat(bounds.x + bounds.width / 2);
 
         if (manual_target_id_index.* == manual_target_id.len) {
             if (C.IsKeyPressed(C.KEY_ENTER)) {
-                try set_target_id(target_id, manual_target_id.*);
+                try set_target_id(target_id, manual_target_id.*, dm_state);
                 return;
             }
         }
@@ -72,16 +59,16 @@ const ManualScreen = struct {
 
         const txt_length = Font.measureText(txt, GUI.FONT_SIZE * 2 / 3);
 
-        const y_center = @divTrunc(GUI.HEIGHT, 2);
+        const y_center = bounds.y + bounds.height / 2;
 
-        Font.drawText(txt, x_center - @divTrunc(txt_length, 2), y_center - GUI.FONT_SIZE * 2, GUI.FONT_SIZE * 2 / 3, C.WHITE);
+        Font.drawText(txt, x_center - @divTrunc(txt_length, 2), @intFromFloat(y_center - GUI.FONT_SIZE * 2), GUI.FONT_SIZE * 2 / 3, C.WHITE);
 
-        txt_input.draw_text_input_array(64, x_center, y_center - GUI.FONT_SIZE / 2, manual_target_id, manual_target_id_index, .Center);
+        txt_input.draw_text_input_array(64, x_center, @intFromFloat(y_center - GUI.FONT_SIZE / 2), manual_target_id, manual_target_id_index, .Center);
 
-        try ManualScreen.draw_paste_target_id_button(manual_target_id, manual_target_id_index, target_id);
+        try ManualScreen.draw_paste_target_id_button(manual_target_id, manual_target_id_index, target_id, dm_state);
     }
 
-    fn draw_paste_target_id_button(manual_target_id: *[64:0]u8, manual_target_id_index: *usize, target_id: *?[32]u8) !void {
+    fn draw_paste_target_id_button(manual_target_id: *[64:0]u8, manual_target_id_index: *usize, target_id: *?[32]u8, dm_state: *Client.DMState) !void {
         const paste_txt = "Paste ID from clipboard";
         const paste_txt_length = Font.measureText(paste_txt, GUI.FONT_SIZE * 2 / 3);
 
@@ -118,7 +105,7 @@ const ManualScreen = struct {
 
                 @memcpy(manual_target_id, clipboard_data[0..64]);
                 manual_target_id_index.* = manual_target_id.len;
-                try set_target_id(target_id, manual_target_id.*);
+                try set_target_id(target_id, manual_target_id.*, dm_state);
                 return;
             }
         }
@@ -129,22 +116,18 @@ const ManualScreen = struct {
     }
 };
 
-fn draw_manual_button(is_manual: *bool) void {
+fn draw_manual_button(dm_state: *Client.DMState, rect: C.Rectangle) void {
     if (C.IsKeyPressed(C.KEY_ESCAPE) or C.IsKeyPressedRepeat(C.KEY_ESCAPE)) {
-        is_manual.* = false;
+        dm_state.* = .{ .NotManual = {} };
         return;
     }
 
-    const manual_button = C.Rectangle{
-        .x = @floatFromInt(GUI.WIDTH - 25),
-        .y = 5,
-        .width = 20,
-        .height = 20,
+    var close_button_bg_color = switch (dm_state.*) {
+        .Manual => C.BLUE,
+        .NotManual => C.BLACK,
     };
 
-    var close_button_bg_color = if (is_manual.*) C.BLUE else C.BLACK;
-
-    if (C.CheckCollisionPointRec(C.GetMousePosition(), manual_button)) {
+    if (C.CheckCollisionPointRec(C.GetMousePosition(), rect)) {
         close_button_bg_color = C.DARKGRAY;
 
         if (C.IsMouseButtonDown(C.MOUSE_LEFT_BUTTON)) {
@@ -152,29 +135,34 @@ fn draw_manual_button(is_manual: *bool) void {
         }
 
         if (C.IsMouseButtonPressed(C.MOUSE_LEFT_BUTTON)) {
-            is_manual.* = !is_manual.*;
+            switch (dm_state.*) {
+                .Manual => dm_state.* = .{ .NotManual = {} },
+                .NotManual => dm_state.* = .{ .Manual = .{} },
+            }
         }
     }
 
-    C.DrawRectangleRec(manual_button, close_button_bg_color);
+    C.DrawRectangleRec(rect, close_button_bg_color);
 
-    C.DrawLine(@intCast(GUI.WIDTH - 25), 15, @intCast(GUI.WIDTH - 5), 15, C.WHITE);
-    C.DrawLine(@intCast(GUI.WIDTH - 15), 5, @intCast(GUI.WIDTH - 15), 25, C.WHITE);
+    C.DrawLineV(.{ .x = rect.x, .y = rect.y + rect.height / 2 }, .{ .x = rect.x + rect.width, .y = rect.y + rect.height / 2 }, C.WHITE);
+    C.DrawLineV(.{ .x = rect.x + rect.width / 2, .y = rect.y }, .{ .x = rect.x + rect.width / 2, .y = rect.y + rect.height }, C.WHITE);
 }
 
-fn set_target_id(target_id_ptr: *?[32]u8, target_id: [64]u8) !void {
+fn set_target_id(target_id_ptr: *?[32]u8, target_id: [64]u8, dm_state: *Client.DMState) !void {
     var target_id_unwrap: [32]u8 = undefined;
 
     _ = try std.fmt.hexToBytes(&target_id_unwrap, &target_id);
 
     target_id_ptr.* = target_id_unwrap;
+
+    dm_state.* = .{ .NotManual = {} };
 }
 
-fn display_target_id(id: [32]u8, messages_count: usize, y_offset: *usize, target_id: *?[32]u8) !void {
+fn display_target_id(id: [32]u8, messages_count: usize, y_offset: *f32, target_id: *?[32]u8, bounds: C.Rectangle) !void {
     const rect = C.Rectangle{
-        .x = 0,
-        .y = @floatFromInt(y_offset.*),
-        .width = @floatFromInt(GUI.WIDTH),
+        .x = bounds.x,
+        .y = y_offset.*,
+        .width = bounds.width,
         .height = TARGET_ID_HEIGHT,
     };
 
@@ -188,20 +176,25 @@ fn display_target_id(id: [32]u8, messages_count: usize, y_offset: *usize, target
         }
 
         if (C.IsMouseButtonPressed(C.MOUSE_LEFT_BUTTON)) {
-            target_id.* = id; //TODO perhaps stop the loop execution
+            target_id.* = id;
+            return;
+        }
+    }
+
+    if (target_id.*) |target| {
+        if (std.mem.eql(u8, &id, &target)) {
+            rect_color = C.BLUE;
         }
     }
 
     C.DrawRectangleRec(rect, rect_color);
     const id_hex = std.fmt.bytesToHex(id, .lower);
-    Font.drawText(&id_hex, GUI.button_padding, @intCast(y_offset.* + GUI.button_padding), GUI.FONT_SIZE, C.WHITE);
+    Font.drawText(&id_hex, @intFromFloat(rect.x + GUI.button_padding), @intFromFloat(y_offset.* + GUI.button_padding), GUI.FONT_SIZE, C.WHITE);
 
     const number_of_messages_text: [:0]u8 = try std.fmt.allocPrintZ(allocator, "{d} message(s)", .{messages_count});
     defer allocator.free(number_of_messages_text);
 
-    Font.drawText(number_of_messages_text, GUI.button_padding, @intCast(y_offset.* + GUI.button_padding + GUI.FONT_SIZE), GUI.FONT_SIZE, C.WHITE);
+    Font.drawText(number_of_messages_text, @intFromFloat(rect.x + GUI.button_padding), @intFromFloat(y_offset.* + GUI.button_padding + GUI.FONT_SIZE), GUI.FONT_SIZE, C.WHITE);
 
-    y_offset.* += TARGET_ID_HEIGHT;
-
-    y_offset.* += SPACE_BETWEEN;
+    y_offset.* += TARGET_ID_HEIGHT + SPACE_BETWEEN;
 }

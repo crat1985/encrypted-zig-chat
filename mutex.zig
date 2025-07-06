@@ -3,14 +3,13 @@ const std = @import("std");
 pub fn Mutex(comptime T: type) type {
     return struct {
         _data: T,
-        inner_mutex: std.Thread.Mutex,
+        inner_mutex: std.Thread.Mutex = .{},
 
         const Self = @This();
 
         pub fn init(data: T) Self {
             return Self{
                 ._data = data,
-                .inner_mutex = .{},
             };
         }
 

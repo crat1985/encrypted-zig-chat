@@ -4,13 +4,12 @@ const messages = @import("messages.zig");
 const txt_input = @import("text_input.zig");
 const std = @import("std");
 const Font = @import("font.zig");
+const message_mod = @import("../message.zig");
+const Mutex = @import("../../mutex.zig").Mutex;
 
 const allocator = std.heap.page_allocator;
 
-pub fn ask_message(my_id: [32]u8, dm: [32]u8) ![]u8 {
-    var message = try allocator.allocSentinel(c_int, 0, 0);
-    defer allocator.free(message);
-
+pub fn draw_dm_screen(my_id: [32]u8, dm: [32]u8, current_message: *[:0]c_int, bounds: C.Rectangle, keyboard_enabled: bool, cursor: *c_int, writer: *Mutex(std.io.AnyWriter), symmetric_key: [32]u8, target_id: *?[32]u8) !void {
     const my_id_hex = try std.fmt.allocPrint(allocator, "{s}", .{std.fmt.bytesToHex(my_id, .lower)});
     defer allocator.free(my_id_hex);
     const dm_hexz = try std.fmt.allocPrintZ(allocator, "{s}", .{std.fmt.bytesToHex(dm, .lower)});
@@ -21,67 +20,76 @@ pub fn ask_message(my_id: [32]u8, dm: [32]u8) ![]u8 {
 
     const dm_with_txt_length = Font.measureText(dm_with_txt, GUI.FONT_SIZE);
 
-    var should_continue = true;
+    try draw_close_dm_button(cursor, target_id);
 
-    var cursor = C.MOUSE_CURSOR_DEFAULT;
+    var y_min_messages: c_int = @intFromFloat(bounds.y + 25 + 10);
 
-    while (!C.WindowShouldClose() and should_continue) {
-        cursor = C.MOUSE_CURSOR_DEFAULT;
+    const x_center: c_int = @intFromFloat(bounds.x + bounds.width / 2);
 
-        C.BeginDrawing();
-        defer C.EndDrawing();
+    Font.drawText(dm_with_txt, x_center - @divTrunc(dm_with_txt_length, 2), y_min_messages, GUI.FONT_SIZE, C.DARKGREEN);
 
-        defer C.SetMouseCursor(cursor);
+    y_min_messages += GUI.FONT_SIZE + 5;
 
-        C.ClearBackground(C.BLACK);
+    {
+        const input_text_bounds = C.Rectangle{
+            .x = bounds.x,
+            .y = bounds.height - GUI.FONT_SIZE,
+            .width = bounds.width,
+            .height = GUI.FONT_SIZE,
+        };
 
-        GUI.WIDTH = @intCast(C.GetScreenWidth());
-        GUI.HEIGHT = @intCast(C.GetScreenHeight());
-
-        try @import("id_top_left_display.zig").draw_id_top_left_display(my_id, &cursor);
-
-        try draw_close_dm_button(&cursor);
-
-        var y_min_messages: u64 = 25 + 10;
-
-        Font.drawText(dm_with_txt, @divTrunc(GUI.WIDTH, 2) - @divTrunc(dm_with_txt_length, 2), @intCast(y_min_messages), GUI.FONT_SIZE, C.DARKGREEN);
-
-        y_min_messages += GUI.FONT_SIZE + 5;
-
-        try draw_message_input_text(&should_continue, &message);
-
-        try draw_messages(dm, dm_hexz, y_min_messages);
+        try draw_message_input_text(
+            current_message,
+            input_text_bounds,
+            writer,
+            symmetric_key,
+            dm,
+            keyboard_enabled,
+        );
     }
 
-    if (C.WindowShouldClose()) std.process.exit(0);
+    const messages_bounds = C.Rectangle{
+        .x = bounds.x,
+        .y = @floatFromInt(y_min_messages),
+        .width = bounds.width,
+        .height = bounds.height - @as(f32, @floatFromInt(y_min_messages)),
+    };
 
-    const msg_utf8_raylib = C.LoadUTF8(message.ptr, @intCast(message.len));
-    defer C.UnloadUTF8(msg_utf8_raylib);
-    const n = C.TextLength(msg_utf8_raylib);
-    const message_utf8 = try allocator.alloc(u8, n);
-    @memcpy(message_utf8, msg_utf8_raylib[0..n]);
-
-    return message_utf8;
+    try draw_messages(dm, dm_hexz, messages_bounds);
 }
 
-fn draw_message_input_text(should_continue: *bool, message: *[:0]c_int) !void {
+fn draw_message_input_text(message: *[:0]c_int, bounds: C.Rectangle, writer: *Mutex(std.io.AnyWriter), symmetric_key: [32]u8, target_id: [32]u8, is_enabled: bool) !void {
+    const txt_y: c_int = @intFromFloat(bounds.y + bounds.height / 2 - GUI.FONT_SIZE);
+
     const enter_message_txt = "Enter message :";
     const enter_message_txt_length = Font.measureText(enter_message_txt, GUI.FONT_SIZE);
-    Font.drawText(enter_message_txt, 0, @intCast(GUI.HEIGHT - GUI.FONT_SIZE), GUI.FONT_SIZE, C.WHITE);
+    Font.drawText(enter_message_txt, @intFromFloat(bounds.x), txt_y, GUI.FONT_SIZE, C.WHITE);
 
-    if (C.IsKeyPressed(C.KEY_ENTER) or C.IsKeyPressedRepeat(C.KEY_ENTER)) {
-        if (message.len > 0) {
-            should_continue.* = false;
+    if (is_enabled) {
+        if (C.IsKeyPressed(C.KEY_ENTER) or C.IsKeyPressedRepeat(C.KEY_ENTER)) {
+            if (message.len > 0) {
+                const msg_utf8_raylib = C.LoadUTF8(message.ptr, @intCast(message.len));
+                defer C.UnloadUTF8(msg_utf8_raylib);
+                const n = C.TextLength(msg_utf8_raylib);
+
+                const msg_utf8_owned = try allocator.dupe(u8, msg_utf8_raylib[0..n]);
+
+                try message_mod.send_request(writer, symmetric_key, target_id, .{ .raw_message = msg_utf8_owned });
+                allocator.free(message.*);
+
+                message.* = try allocator.allocSentinel(c_int, 0, 0);
+            }
         }
-    }
 
-    try txt_input.draw_text_input(enter_message_txt_length + 20, @intCast(GUI.HEIGHT - GUI.FONT_SIZE), .{ .UTF8 = @ptrCast(message) }, GUI.FONT_SIZE, .Left);
+        try txt_input.draw_text_input(@as(c_int, @intFromFloat(bounds.x)) + enter_message_txt_length + 5, txt_y, .{ .UTF8 = @ptrCast(message) }, GUI.FONT_SIZE, .Left);
+    } else {
+        txt_input.draw_text_input_no_events(@as(c_int, @intFromFloat(bounds.x)) + enter_message_txt_length + 5, txt_y, .{ .UTF8 = @ptrCast(message) }, GUI.FONT_SIZE, .Left);
+    }
 }
 
-fn draw_messages(dm: [32]u8, dm_hexz: [:0]u8, y_min_messages: u64) !void {
+fn draw_messages(dm: [32]u8, dm_hexz: [:0]u8, bounds: C.Rectangle) !void {
     const discussion_messages: []const messages.Message = blk: {
-        const msgs_lock = messages.messages.lock();
-        defer messages.messages.unlock();
+        const msgs_lock = &messages.messages;
 
         const msgs = msgs_lock.get(dm) orelse break :blk try allocator.alloc(messages.Message, 0);
 
@@ -91,12 +99,12 @@ fn draw_messages(dm: [32]u8, dm_hexz: [:0]u8, y_min_messages: u64) !void {
     };
     defer allocator.free(discussion_messages);
 
-    var y_msg_offset = GUI.HEIGHT - GUI.FONT_SIZE * 2 - 5;
+    var y_msg_offset = bounds.y + bounds.height - GUI.FONT_SIZE * 3;
 
     for (0..discussion_messages.len) |i| {
         const reverse_i = discussion_messages.len - 1 - i;
         const discussion_message = discussion_messages[reverse_i];
-        if (y_msg_offset - GUI.FONT_SIZE * 2 - 10 < y_min_messages) break;
+        if (y_msg_offset - GUI.FONT_SIZE * 2 - 10 < bounds.y) break;
         // defer y_msg_offset -= GUI.FONT_SIZE * 2 + 10;
 
         const author_hexz = switch (discussion_message.sent_by) {
@@ -107,17 +115,17 @@ fn draw_messages(dm: [32]u8, dm_hexz: [:0]u8, y_min_messages: u64) !void {
         var len: c_int = undefined;
         const msg_content_codepoints = C.LoadCodepoints(discussion_message.content.ptr, &len);
         defer C.UnloadCodepoints(msg_content_codepoints);
-        Font.drawCodepoints(msg_content_codepoints[0..@intCast(len)], 5, y_msg_offset, GUI.FONT_SIZE, C.WHITE);
+        Font.drawCodepoints(msg_content_codepoints[0..@intCast(len)], @intFromFloat(bounds.x + 5), @intFromFloat(y_msg_offset), GUI.FONT_SIZE, C.WHITE);
 
         y_msg_offset -= GUI.FONT_SIZE + 5;
 
-        Font.drawText(author_hexz, 5, @intCast(y_msg_offset), GUI.FONT_SIZE, C.BLUE);
+        Font.drawText(author_hexz, @intFromFloat(bounds.x + 5), @intFromFloat(y_msg_offset), GUI.FONT_SIZE, C.BLUE);
 
         y_msg_offset -= GUI.FONT_SIZE * 3 / 2 + 5;
     }
 }
 
-fn draw_close_dm_button(cursor: *c_int) !void {
+fn draw_close_dm_button(cursor: *c_int, target_id: *?[32]u8) !void {
     const SIDE = 25;
     const OFFSET = 5;
 
@@ -135,7 +143,7 @@ fn draw_close_dm_button(cursor: *c_int) !void {
         cursor.* = C.MOUSE_CURSOR_POINTING_HAND;
 
         if (C.IsMouseButtonPressed(C.MOUSE_LEFT_BUTTON)) {
-            return error.DMExit;
+            target_id.* = null;
         }
     }
 }
