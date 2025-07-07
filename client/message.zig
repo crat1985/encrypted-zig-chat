@@ -232,7 +232,7 @@ pub fn send_request(writer: *Mutex(std.io.AnyWriter), symmetric_key: [32]u8, tar
     const raw_action_data =
         switch (data) {
             .file => |f| (EncryptedPart.SendFileRequest{
-                .filename_len = f.name.len,
+                .filename_len = f.name_len,
                 .filename = f.name,
                 .total_size = blk: {
                     const size = (try f.file.metadata()).size();
@@ -431,6 +431,7 @@ pub const SendRequestData = union(enum) {
     raw_message: []const u8,
     file: struct {
         file: std.fs.File,
+        name_len: u8,
         name: [255]u8,
     },
 };
@@ -480,7 +481,7 @@ pub const SendRequest = struct {
         for (0..parts_count) |i| {
             const n = try reader.readAll(&data);
 
-            std.crypto.random.bytes(data[n..]);
+            std.crypto.random.bytes(data[n..]); //add padding if necessary
 
             var index: [4]u8 = undefined;
             std.mem.writeInt(u32, &index, @intCast(i), .big);

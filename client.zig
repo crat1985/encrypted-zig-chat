@@ -3,7 +3,8 @@ const api = @import("client/api.zig");
 const message = @import("client/message.zig");
 const GUI = @import("client/gui.zig");
 const C = @import("client/gui/c.zig").C;
-const Mutex = @import("mutex.zig").Mutex;
+const mutex = @import("mutex.zig");
+const Mutex = mutex.Mutex;
 
 fn handle_incoming_data(reader: std.io.AnyReader, writer: *Mutex(std.io.AnyWriter), privkey: [32]u8, pubkey: [32]u8) !void {
     while (true) {
@@ -113,7 +114,7 @@ pub fn main() !void {
                     var file_name_array: [255]u8 = undefined;
                     @memcpy(file_name_array[0..file_name_n], file_name[0..file_name_n]);
 
-                    try message.send_request(&writer, symmetric_key, target, .{ .file = .{ .file = try std.fs.openFileAbsolute(file_name_array[0..file_name_n], .{}), .name = file_name_array } });
+                    try message.send_request(&writer, symmetric_key, target, .{ .file = .{ .file = try std.fs.openFileAbsolute(file_name_array[0..file_name_n], .{}), .name = file_name_array, .name_len = @intCast(file_name_n) } });
                 }
             }
         }
@@ -222,6 +223,8 @@ fn handle_message(reader: std.io.AnyReader, writer: *Mutex(std.io.AnyWriter), pr
                 .target_id = decrypted_msg.from,
                 .total_size = total_size,
             };
+
+            std.debug.print("lock count = {d}, unlock count = {d}\n", .{ mutex.lock_count, mutex.unlock_count });
 
             {
                 const lock = &message.receive_requests;
