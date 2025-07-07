@@ -55,7 +55,7 @@ pub fn draw_dm_screen(my_id: [32]u8, dm: [32]u8, current_message: *[:0]c_int, bo
         .height = bounds.height - @as(f32, @floatFromInt(y_min_messages)),
     };
 
-    try draw_messages(dm, dm_hexz, messages_bounds);
+    try draw_messages(dm, dm_hexz, messages_bounds, cursor);
 }
 
 fn draw_message_input_text(message: *[:0]c_int, bounds: C.Rectangle, writer: *Mutex(std.io.AnyWriter), symmetric_key: [32]u8, target_id: [32]u8, is_enabled: bool) !void {
@@ -87,7 +87,7 @@ fn draw_message_input_text(message: *[:0]c_int, bounds: C.Rectangle, writer: *Mu
     }
 }
 
-fn draw_messages(dm: [32]u8, dm_hexz: [:0]u8, bounds: C.Rectangle) !void {
+fn draw_messages(dm: [32]u8, dm_hexz: [:0]u8, bounds: C.Rectangle, cursor: *c_int) !void {
     const discussion_messages: []const messages.Message = blk: {
         const msgs_lock = &messages.messages;
 
@@ -115,7 +115,30 @@ fn draw_messages(dm: [32]u8, dm_hexz: [:0]u8, bounds: C.Rectangle) !void {
         var len: c_int = undefined;
         const msg_content_codepoints = C.LoadCodepoints(discussion_message.content.ptr, &len);
         defer C.UnloadCodepoints(msg_content_codepoints);
-        Font.drawCodepoints(msg_content_codepoints[0..@intCast(len)], @intFromFloat(bounds.x + 5), @intFromFloat(y_msg_offset), GUI.FONT_SIZE, C.WHITE);
+        Font.drawCodepoints(msg_content_codepoints[0..@intCast(len)], @intFromFloat(bounds.x + 5), @intFromFloat(y_msg_offset), GUI.FONT_SIZE, if (discussion_message.is_file) C.BLUE else C.WHITE);
+        if (discussion_message.is_file) {
+            const msg_content_codepoints_width = Font.measureCodepoints(msg_content_codepoints[0..@intCast(len)], GUI.FONT_SIZE);
+
+            const rect = C.Rectangle{
+                .x = bounds.x,
+                .y = y_msg_offset,
+                .width = @floatFromInt(msg_content_codepoints_width),
+                .height = GUI.FONT_SIZE + 3,
+            };
+
+            if (C.CheckCollisionPointRec(C.GetMousePosition(), rect)) {
+                cursor.* = C.MOUSE_CURSOR_POINTING_HAND;
+
+                if (C.IsMouseButtonPressed(C.MOUSE_BUTTON_LEFT)) {
+                    const relative_path = try std.fs.path.join(allocator, &.{ @import("../../client.zig").DECRYPTED_OUTPUT_DIR, discussion_message.content });
+                    defer allocator.free(relative_path);
+
+                    try @import("../open_file_default.zig").openWithDefault(relative_path);
+                }
+            }
+
+            C.DrawLine(@intFromFloat(rect.x), @intFromFloat(rect.y + GUI.FONT_SIZE + 3), @intFromFloat(rect.x + rect.width), @intFromFloat(rect.y + GUI.FONT_SIZE + 3), C.BLUE);
+        }
 
         y_msg_offset -= GUI.FONT_SIZE + 5;
 

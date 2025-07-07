@@ -78,7 +78,7 @@ pub const ReceivedMessage = struct {
     from: [32]u8,
     to: [32]u8,
     msg_id: u64,
-    payload_real_len: u64,
+    // payload_real_len: u64,
     action: EncryptedPart.Action,
 };
 
@@ -370,13 +370,13 @@ pub fn decrypt_message(pubkey: *const [32]u8, privkey: [32]u8, reader: std.io.An
 
             const total_size = std.mem.readInt(u64, &encrypted_data.total_size, .big);
 
-            std.debug.print("Send message :\n- msg_id = {d}\n- Total size = {d}\n", .{ msg_id, total_size });
+            std.debug.print("Send message request :\n- msg_id = {d}\n- Total size = {d}\n", .{ msg_id, total_size });
 
             return ReceivedMessage{
                 .from = full_message.from,
                 .to = full_message.data.target_id,
                 .msg_id = msg_id,
-                .payload_real_len = 0,
+                // .payload_real_len = 0,
                 .action = .{ .SendMessageRequest = .{ .total_size = encrypted_data.total_size, ._padding = encrypted_data._padding } },
             };
         },
@@ -387,7 +387,6 @@ pub fn decrypt_message(pubkey: *const [32]u8, privkey: [32]u8, reader: std.io.An
                 .from = full_message.from,
                 .to = full_message.data.target_id,
                 .msg_id = msg_id,
-                .payload_real_len = 0,
                 .action = .{ .SendData = .{ .index = encrypted_part.index, .payload_and_padding = encrypted_part.payload_and_padding } },
             };
         },
@@ -398,7 +397,7 @@ pub fn decrypt_message(pubkey: *const [32]u8, privkey: [32]u8, reader: std.io.An
                 .from = full_message.from,
                 .to = full_message.data.target_id,
                 .msg_id = msg_id,
-                .payload_real_len = 0,
+                // .payload_real_len = 0,
                 .action = .{ .SendFileRequest = .{ .filename_len = encrypted_part.filename_len, .filename = encrypted_part.filename, .total_size = encrypted_part.total_size, ._padding = encrypted_part._padding } },
             };
         },
@@ -409,7 +408,7 @@ pub fn decrypt_message(pubkey: *const [32]u8, privkey: [32]u8, reader: std.io.An
                 .from = full_message.from,
                 .to = full_message.data.target_id,
                 .msg_id = msg_id,
-                .payload_real_len = 0,
+                // .payload_real_len = 0,
                 .action = .{ .Accept = .{ ._padding = encrypted_part._padding } },
             };
         },
@@ -420,7 +419,7 @@ pub fn decrypt_message(pubkey: *const [32]u8, privkey: [32]u8, reader: std.io.An
                 .from = full_message.from,
                 .to = full_message.data.target_id,
                 .msg_id = msg_id,
-                .payload_real_len = 0,
+                // .payload_real_len = 0,
                 .action = .{ .Decline = .{ ._padding = encrypted_part._padding } },
             };
         },
@@ -444,9 +443,15 @@ pub const SendRequest = struct {
     const Self = @This();
 
     pub fn make(self: Self, writer: *Mutex(std.io.AnyWriter), msg_id: u64) !void {
+        var file_name: ?[]const u8 = undefined;
+
         const reader = switch (self.data) {
-            .file => |f| f.file.reader().any(),
+            .file => |f| blk: {
+                file_name = f.name[0..f.name_len];
+                break :blk f.file.reader().any();
+            },
             .raw_message => |msg| blk: {
+                file_name = null;
                 const str = struct {
                     index: usize = 0,
                     data: []const u8,
@@ -454,9 +459,11 @@ pub const SendRequest = struct {
                     const InnerSelf = @This();
 
                     pub fn read(s: *InnerSelf, buffer: []u8) anyerror!usize {
-                        const n = if (s.data[s.index..].len >= buffer.len) buffer.len else s.data[s.index..].len;
+                        const n = @min(s.data[s.index..].len, buffer.len);
 
                         @memcpy(buffer[0..n], s.data[s.index .. s.index + n]);
+
+                        s.index += n;
 
                         return n;
                     }
@@ -481,6 +488,8 @@ pub const SendRequest = struct {
         for (0..parts_count) |i| {
             const n = try reader.readAll(&data);
 
+            // std.debug.print("data = {s}\n", .{data[0..n]});
+
             std.crypto.random.bytes(data[n..]); //add padding if necessary
 
             var index: [4]u8 = undefined;
@@ -495,6 +504,16 @@ pub const SendRequest = struct {
                 try lock.writeAll(&full_part);
             }
 
+            {
+                const total_sent: f32 = @floatFromInt(i * PAYLOAD_AND_PADDING_SIZE + n);
+                const avancement = total_sent / @as(f32, @floatFromInt(total_size)) * 100;
+                if (file_name) |name| {
+                    std.debug.print("Sent {d:.2}% of the file `{s}`\n", .{ avancement, name });
+                } else {
+                    std.debug.print("Sent {d:.2}% of the message\n", .{avancement});
+                }
+            }
+
             if (n < PAYLOAD_AND_PADDING_SIZE) break;
         }
     }
@@ -504,7 +523,7 @@ pub var send_requests: std.AutoHashMap(u64, SendRequest) = undefined;
 
 pub const ReceiveRequestData = union(enum) {
     raw_message: []u8,
-    file: std.fs.File,
+    file: struct { file: std.fs.File, filename: [255]u8, filename_len: u8 },
 };
 
 pub const ReceiveRequest = struct {

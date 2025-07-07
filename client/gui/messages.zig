@@ -29,6 +29,7 @@ pub const DMMessageAuthor = enum(u1) {
 
 pub const Message = struct {
     sent_by: DMMessageAuthor,
+    is_file: bool,
     content: [:0]u8,
 };
 

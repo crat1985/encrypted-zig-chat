@@ -32,6 +32,9 @@ pub fn main() !void {
     message.send_requests = std.AutoHashMap(u64, message.SendRequest).init(allocator);
     defer message.send_requests.deinit();
 
+    message.receive_requests = std.AutoHashMap(u64, message.ReceiveRequest).init(allocator);
+    defer message.receive_requests.deinit();
+
     const stream = try GUI.connect_to_server();
     defer stream.close();
 
@@ -109,12 +112,14 @@ pub fn main() !void {
                 const files_slice = files.paths[0..@intCast(files.count)];
 
                 for (files_slice) |file_path| {
+                    const file_path_n = C.TextLength(file_path);
+
                     const file_name = C.GetFileName(file_path);
                     const file_name_n: usize = @intCast(C.TextLength(file_name));
                     var file_name_array: [255]u8 = undefined;
                     @memcpy(file_name_array[0..file_name_n], file_name[0..file_name_n]);
 
-                    try message.send_request(&writer, symmetric_key, target, .{ .file = .{ .file = try std.fs.openFileAbsolute(file_name_array[0..file_name_n], .{}), .name = file_name_array, .name_len = @intCast(file_name_n) } });
+                    try message.send_request(&writer, symmetric_key, target, .{ .file = .{ .file = try std.fs.openFileAbsolute(file_path[0..file_path_n], .{}), .name = file_name_array, .name_len = @intCast(file_name_n) } });
                 }
             }
         }
@@ -127,7 +132,7 @@ pub fn get_symmetric_key(public_key: std.crypto.ecc.Curve25519, priv_key: [32]u8
 
 const allocator = std.heap.page_allocator;
 
-const DECRYPTED_OUTPUT_DIR = "decrypted_files";
+pub const DECRYPTED_OUTPUT_DIR = "decrypted_files";
 
 fn handle_message(reader: std.io.AnyReader, writer: *Mutex(std.io.AnyWriter), privkey: [32]u8, pubkey: [32]u8) !void {
     const decrypted_msg = try message.decrypt_message(&pubkey, privkey, reader);
@@ -148,6 +153,11 @@ fn handle_message(reader: std.io.AnyReader, writer: *Mutex(std.io.AnyWriter), pr
             const reqs = &message.send_requests;
 
             const entry = reqs.fetchRemove(decrypted_msg.msg_id) orelse std.debug.panic("Invalid send request id {d}\n", .{decrypted_msg.msg_id});
+
+            switch (entry.value.data) {
+                .raw_message => |rm| std.debug.print("Accepted message request of size {d}o\n", .{rm.len}),
+                .file => {},
+            }
 
             try entry.value.make(writer, decrypted_msg.msg_id);
         },
@@ -180,7 +190,7 @@ fn handle_message(reader: std.io.AnyReader, writer: *Mutex(std.io.AnyWriter), pr
             };
 
             const rr = message.ReceiveRequest{
-                .data = .{ .file = output_file },
+                .data = .{ .file = .{ .file = output_file, .filename = sfr.filename, .filename_len = sfr.filename_len } },
                 .symmetric_key = symmetric_key,
                 .target_id = decrypted_msg.from,
                 .total_size = std.mem.readInt(u64, &sfr.total_size, .big),
@@ -224,13 +234,11 @@ fn handle_message(reader: std.io.AnyReader, writer: *Mutex(std.io.AnyWriter), pr
                 .total_size = total_size,
             };
 
-            std.debug.print("lock count = {d}, unlock count = {d}\n", .{ mutex.lock_count, mutex.unlock_count });
-
             {
                 const lock = &message.receive_requests;
 
                 const entry = try lock.getOrPut(decrypted_msg.msg_id);
-                if (entry.found_existing) @panic("no");
+                if (entry.found_existing) @trap();
 
                 entry.value_ptr.* = rr;
             }
@@ -245,14 +253,34 @@ fn handle_message(reader: std.io.AnyReader, writer: *Mutex(std.io.AnyWriter), pr
         .SendData => |sd| {
             const index = std.mem.readInt(u32, &sd.index, .big);
 
+            var is_file: bool = undefined;
+
             const total_size = blk: {
                 const reqs = &message.receive_requests;
-                break :blk reqs.get(decrypted_msg.msg_id).?.total_size;
+
+                const req = reqs.get(decrypted_msg.msg_id).?;
+                switch (req.data) {
+                    .file => is_file = true,
+                    .raw_message => is_file = false,
+                }
+
+                break :blk req.total_size;
             };
 
-            const is_last = index * message.PAYLOAD_AND_PADDING_SIZE + decrypted_msg.payload_real_len == total_size;
+            var payload_real_len: u64 = undefined;
+            var is_last: bool = undefined;
+
+            if (@as(u64, index + 1) * message.PAYLOAD_AND_PADDING_SIZE >= total_size) {
+                payload_real_len = total_size % message.PAYLOAD_AND_PADDING_SIZE;
+                is_last = true;
+            } else {
+                payload_real_len = message.PAYLOAD_AND_PADDING_SIZE;
+                is_last = false;
+            }
 
             const is_first = index == 0;
+
+            if (!is_file) std.debug.print("Received data : {s}\n", .{sd.payload_and_padding[0..payload_real_len]});
 
             if (is_first and is_last) {
                 {
@@ -263,10 +291,11 @@ fn handle_message(reader: std.io.AnyReader, writer: *Mutex(std.io.AnyWriter), pr
                     }
                 }
 
-                const content = try allocator.dupeZ(u8, sd.payload_and_padding[0..decrypted_msg.payload_real_len]);
+                const content = try allocator.dupeZ(u8, sd.payload_and_padding[0..payload_real_len]);
 
                 const msg = @import("client/gui/messages.zig").Message{
                     .sent_by = if (std.mem.eql(u8, &pubkey, &decrypted_msg.from)) .Me else .NotMe,
+                    .is_file = is_file,
                     .content = content,
                 };
 
@@ -282,11 +311,37 @@ fn handle_message(reader: std.io.AnyReader, writer: *Mutex(std.io.AnyWriter), pr
                     break :blk if (is_last) lock.fetchRemove(decrypted_msg.msg_id).?.value else lock.get(decrypted_msg.msg_id).?;
                 };
 
-                const content = sd.payload_and_padding[0..decrypted_msg.payload_real_len];
+                const content = sd.payload_and_padding[0..payload_real_len];
+
+                {
+                    const total_sent: f32 = @floatFromInt(@as(u64, index) * message.PAYLOAD_AND_PADDING_SIZE + content.len);
+                    const avancement = total_sent / @as(f32, @floatFromInt(total_size)) * 100;
+
+                    switch (value.data) {
+                        .file => |f| {
+                            std.debug.print("Sent {d:.2}% of the file `{s}`\n", .{ avancement, f.filename[0..f.filename_len] });
+                        },
+                        .raw_message => {
+                            std.debug.print("Sent {d:.2}% of the message\n", .{avancement});
+                        },
+                    }
+                }
 
                 switch (value.data) {
                     .file => |f| {
-                        try f.writeAll(content);
+                        try f.file.writeAll(content);
+
+                        if (is_last) {
+                            const contentz = try allocator.dupeZ(u8, f.filename[0..f.filename_len]);
+
+                            const msg = @import("client/gui/messages.zig").Message{
+                                .sent_by = if (std.mem.eql(u8, &pubkey, &decrypted_msg.from)) .Me else .NotMe,
+                                .is_file = is_file,
+                                .content = contentz,
+                            };
+
+                            try GUI.handle_new_message(msg, dm_id);
+                        }
                     },
                     .raw_message => |rm| {
                         @memcpy(rm[index .. index + content.len], content);
@@ -296,6 +351,7 @@ fn handle_message(reader: std.io.AnyReader, writer: *Mutex(std.io.AnyWriter), pr
 
                             const msg = @import("client/gui/messages.zig").Message{
                                 .sent_by = if (std.mem.eql(u8, &pubkey, &decrypted_msg.from)) .Me else .NotMe,
+                                .is_file = is_file,
                                 .content = contentz,
                             };
 
