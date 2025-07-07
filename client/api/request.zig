@@ -52,7 +52,7 @@ pub fn send_request(message_req: SendRequest) !void {
         entry.value_ptr.* = message_req;
     }
 
-    const lock = socket.writer.lock();
+    const lock = socket.lock_writer();
     defer lock.unlock();
 
     try lock.data.writeAll(std.mem.asBytes(&full_message));

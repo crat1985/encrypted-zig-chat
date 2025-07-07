@@ -1,16 +1,28 @@
 const std = @import("std");
-const Mutex = @import("../../mutex.zig").Mutex;
 
-pub var _stream: std.net.Stream = undefined;
-pub var writer: Mutex(std.io.AnyWriter) = undefined;
-pub var reader: Mutex(std.io.AnyReader) = undefined;
+pub fn Guard(comptime T: type) type {
+    return struct {
+        data: *T,
+        mutex: *std.Thread.Mutex,
 
-pub fn init(s: std.net.Stream) void {
-    _stream = s;
-    writer = Mutex(std.io.AnyWriter).init(_stream.writer().any());
-    reader = Mutex(std.io.AnyReader).init(_stream.reader().any());
+        pub fn unlock(self: @This()) void {
+            self.mutex.unlock();
+        }
+    };
 }
 
-pub fn deinit() void {
-    _stream.close();
+var writer_mutex = std.Thread.Mutex{};
+
+var writer: std.io.AnyWriter = undefined;
+
+pub fn lock_writer() Guard(std.io.AnyWriter) {
+    writer_mutex.lock();
+    return Guard(std.io.AnyWriter){
+        .data = &writer,
+        .mutex = &writer_mutex,
+    };
+}
+
+pub fn init(w: std.io.AnyWriter) void {
+    writer = w;
 }

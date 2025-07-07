@@ -1,41 +1,58 @@
 const std = @import("std");
-const Mutex = @import("mutex.zig").Mutex;
 
-fn handle_serv(s: std.net.Server) !void {
-    var serv_mut = s;
+pub fn Mutex(comptime T: type) type {
+    return struct {
+        _data: T,
+        inner_mutex: std.Thread.Mutex = .{},
 
-    var out: [10000]u8 = undefined;
-    while (true) {
-        const conn = try serv_mut.accept();
-        _ = try conn.stream.read(&out);
-    }
+        const Self = @This();
+
+        pub const Guard = struct {
+            data: *T,
+            m: *std.Thread.Mutex,
+
+            pub fn unlock(self: Guard) void {
+                self.m.unlock();
+            }
+        };
+
+        pub fn init(data: T) Self {
+            return Self{
+                ._data = data,
+            };
+        }
+
+        pub fn lock(self: *Self) Guard {
+            self.inner_mutex.lock();
+
+            return Guard{
+                .data = &self._data,
+                .m = &self.inner_mutex,
+            };
+        }
+    };
 }
 
-var stream: std.net.Stream = undefined;
-var w: Mutex(std.io.AnyWriter) = undefined;
-var r: Mutex(std.io.AnyReader) = undefined;
+pub var _file: std.fs.File = undefined;
+pub var writer: Mutex(std.io.AnyWriter) = undefined;
+pub var reader: Mutex(std.io.AnyReader) = undefined;
 
 test {
-    const addr = std.net.Address.initIp4(.{ 127, 0, 0, 1 }, 8080);
-
     {
-        const serv = try addr.listen(.{
-            .reuse_address = true,
-            .reuse_port = true,
-        });
-
-        _ = try std.Thread.spawn(.{}, handle_serv, .{serv});
+        const f = try std.fs.cwd().createFile("zgopzjpogjzepogjzepojgzeoppojopgjzeopgj.txt", .{});
+        init(f);
     }
 
-    {
-        const s = try std.net.tcpConnectToAddress(addr);
-        stream = s;
-        w = Mutex(std.io.AnyWriter).init(s.writer().any());
-        r = Mutex(std.io.AnyReader).init(s.reader().any());
-    }
+    defer _file.close();
 
-    const w_lock = w.lock();
+    const w_lock = writer.lock();
     defer w_lock.unlock();
 
     try w_lock.data.writeAll("test");
+}
+
+pub fn init(file: std.fs.File) void {
+    _file = file;
+    writer = Mutex(std.io.AnyWriter).init(_file.writer().any());
+    reader = Mutex(std.io.AnyReader).init(_file.reader().any());
 }

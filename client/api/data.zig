@@ -34,7 +34,7 @@ pub fn send_data(send_req: SendRequest, msg_id: u64) !void {
 
         const full_msg = SentFullEncryptedMessage.encrypt(send_req.symmetric_key, send_req.target_id, encrypted_part);
 
-        const lock = socket.writer.lock();
+        const lock = socket.lock_writer();
         defer lock.unlock();
         try lock.data.writeAll(std.mem.asBytes(&full_msg));
 

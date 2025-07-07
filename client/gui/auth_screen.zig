@@ -7,7 +7,7 @@ const Font = @import("font.zig");
 
 const allocator = std.heap.page_allocator;
 
-pub fn handle_auth() !std.crypto.dh.X25519.KeyPair {
+pub fn handle_auth(reader: std.io.AnyReader) !std.crypto.dh.X25519.KeyPair {
     var keypair: ?std.crypto.dh.X25519.KeyPair = null;
     var passphrase: [:0]c_int = try allocator.allocSentinel(c_int, 0, 0);
 
@@ -22,11 +22,11 @@ pub fn handle_auth() !std.crypto.dh.X25519.KeyPair {
 
         if (passphrase.len >= 32) {
             if (C.IsKeyPressed(C.KEY_ENTER) or C.IsKeyPressedRepeat(C.KEY_ENTER)) {
-                try auth(&keypair, passphrase);
+                try auth(&keypair, passphrase, reader);
             }
         }
 
-        try draw_auth_screen(&passphrase, &keypair);
+        try draw_auth_screen(&passphrase, &keypair, reader);
     }
 
     if (C.WindowShouldClose()) std.process.exit(0);
@@ -34,7 +34,7 @@ pub fn handle_auth() !std.crypto.dh.X25519.KeyPair {
     return keypair.?;
 }
 
-fn draw_auth_screen(passphrase: *[:0]c_int, keypair: *?std.crypto.dh.X25519.KeyPair) !void {
+fn draw_auth_screen(passphrase: *[:0]c_int, keypair: *?std.crypto.dh.X25519.KeyPair, reader: std.io.AnyReader) !void {
     const x_center = @divTrunc(GUI.WIDTH, 2);
 
     try txt_input.draw_text_input(x_center, @divTrunc(GUI.HEIGHT, 3), .{ .UTF8 = @ptrCast(passphrase) }, GUI.FONT_SIZE, .Center);
@@ -61,7 +61,7 @@ fn draw_auth_screen(passphrase: *[:0]c_int, keypair: *?std.crypto.dh.X25519.KeyP
         }
 
         if (C.IsMouseButtonPressed(C.MOUSE_LEFT_BUTTON)) {
-            try auth(keypair, passphrase.*);
+            try auth(keypair, passphrase.*, reader);
         }
     }
 
@@ -69,12 +69,12 @@ fn draw_auth_screen(passphrase: *[:0]c_int, keypair: *?std.crypto.dh.X25519.KeyP
     Font.drawText(auth_button_text, @intFromFloat(auth_button.x + GUI.button_padding), @intFromFloat(auth_button.y + GUI.button_padding), GUI.FONT_SIZE, C.WHITE);
 }
 
-fn auth(keypair: *?std.crypto.dh.X25519.KeyPair, passphrase: [:0]c_int) !void {
+fn auth(keypair: *?std.crypto.dh.X25519.KeyPair, passphrase: [:0]c_int, reader: std.io.AnyReader) !void {
     const passphrase_utf8 = C.LoadUTF8(passphrase.ptr, @intCast(passphrase.len));
     defer C.UnloadUTF8(passphrase_utf8);
     const len: u64 = @intCast(C.TextLength(passphrase_utf8));
 
     const derived = try @import("../crypto.zig").derive(passphrase_utf8[0..len]);
 
-    keypair.* = try api.auth.auth(derived);
+    keypair.* = try api.auth.auth(derived, reader);
 }

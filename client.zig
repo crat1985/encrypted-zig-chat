@@ -29,13 +29,11 @@ pub fn main() !void {
     request.receive_requests = std.AutoHashMap(u64, request.ReceiveRequest).init(allocator);
     defer request.receive_requests.deinit();
 
-    {
-        const stream = try GUI.connect_to_server();
-        api.init(stream);
-    }
-    defer api.deinit();
+    const _stream = try GUI.connect_to_server();
+    defer _stream.close();
+    api.init(_stream.writer().any());
 
-    const x25519_key_pair = try GUI.handle_auth();
+    const x25519_key_pair = try GUI.handle_auth(_stream.reader().any());
 
     const pubkey = x25519_key_pair.public_key;
 
@@ -45,7 +43,7 @@ pub fn main() !void {
         std.log.info("You were authenticated as {s}", .{hex_pubkey});
     }
 
-    _ = try std.Thread.spawn(.{}, api.listen.read_messages, .{ x25519_key_pair.secret_key, x25519_key_pair.public_key });
+    _ = try std.Thread.spawn(.{}, api.listen.read_messages, .{ x25519_key_pair.secret_key, x25519_key_pair.public_key, _stream.reader().any() });
 
     var target_id: ?[32]u8 = null;
 

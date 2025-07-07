@@ -28,14 +28,14 @@ pub const ReceivedMessage = struct {
     action: EncryptedPart.Action,
 };
 
-pub fn read_messages(privkey: [32]u8, pubkey: [32]u8) !void {
+pub fn read_messages(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !void {
     while (true) {
-        try handle_message(privkey, pubkey);
+        try handle_message(privkey, pubkey, reader);
     }
 }
 
-fn handle_message(privkey: [32]u8, pubkey: [32]u8) !void {
-    const decrypted_msg = try decrypt_message(&pubkey, privkey);
+fn handle_message(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !void {
+    const decrypted_msg = try decrypt_message(&pubkey, privkey, reader);
 
     const dm_id = if (std.mem.eql(u8, &decrypted_msg.from, &pubkey)) decrypted_msg.to else decrypted_msg.from;
 
@@ -100,7 +100,7 @@ fn handle_message(privkey: [32]u8, pubkey: [32]u8) !void {
             }
 
             {
-                const lock = socket.writer.lock();
+                const lock = socket.lock_writer();
                 defer lock.unlock();
 
                 try lock.data.writeAll(std.mem.asBytes(&full_msg));
@@ -136,7 +136,7 @@ fn handle_message(privkey: [32]u8, pubkey: [32]u8) !void {
             }
 
             {
-                const lock = socket.writer.lock();
+                const lock = socket.lock_writer();
                 defer lock.unlock();
 
                 try lock.data.writeAll(std.mem.asBytes(&full_msg));
@@ -251,13 +251,8 @@ fn handle_message(privkey: [32]u8, pubkey: [32]u8) !void {
     }
 }
 
-pub fn decrypt_message(pubkey: *const [32]u8, privkey: [32]u8) !ReceivedMessage {
-    const full_message: ReceivedFullEncryptedMessage = blk: {
-        const reader = socket.reader.lock();
-        defer reader.unlock();
-
-        break :blk std.mem.bytesAsValue(ReceivedFullEncryptedMessage, &try reader.data.readBytesNoEof(FULL_MESSAGE_SIZE + 32)).*;
-    };
+pub fn decrypt_message(pubkey: *const [32]u8, privkey: [32]u8, reader: std.io.AnyReader) !ReceivedMessage {
+    const full_message: ReceivedFullEncryptedMessage = std.mem.bytesAsValue(ReceivedFullEncryptedMessage, &try reader.readBytesNoEof(FULL_MESSAGE_SIZE + 32)).*;
 
     const encryption_pubkey = if (std.mem.eql(u8, pubkey, &full_message.from)) full_message.data.target_id else full_message.from;
 
