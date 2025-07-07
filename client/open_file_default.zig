@@ -9,5 +9,5 @@ pub fn openWithDefault(file_path: []const u8) !void {
 
     var child = std.process.Child.init(args, allocator);
     try child.spawn();
-    _ = try child.wait(); //remove if don't care about exit code ?
+    _ = try child.wait();
 }

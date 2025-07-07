@@ -1,10 +1,11 @@
 const std = @import("std");
 const Mutex = @import("mutex.zig").Mutex;
-const message_mod = @import("client/message.zig");
+const constants = @import("client/api/constants.zig");
+const FULL_MESSAGE_SIZE = constants.FULL_MESSAGE_SIZE;
 
 const HashMapContext = @import("id_hashmap_ctx.zig").HashMapContext;
 
-const HashMapType = std.HashMap([32]u8, []std.net.Server.Connection, HashMapContext, 70);
+const HashMapType = std.HashMap([32]u8, []*Mutex(std.io.AnyWriter), HashMapContext, 70);
 
 var users: HashMapType = undefined;
 
@@ -35,9 +36,11 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
     const stream = conn.stream;
 
     const reader = stream.reader().any();
-    const writer = stream.writer().any();
+    const _writer = stream.writer().any();
 
-    const pubkey = try handle_auth(reader, writer);
+    const pubkey = try handle_auth(reader, _writer);
+
+    var writer = Mutex(std.io.AnyWriter).init(_writer);
 
     const hex_pubkey = std.fmt.bytesToHex(pubkey, .lower);
     {
@@ -46,28 +49,26 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
 
     const allocator = std.heap.page_allocator;
 
-    try add_connection_to_users(pubkey, conn);
+    try add_connection_to_users(pubkey, &writer);
 
-    defer remove_connection_from_users(pubkey, conn.stream) catch unreachable;
+    defer remove_connection_from_users(pubkey, &writer) catch unreachable;
 
     while (true) {
-        const full_message = reader.readBytesNoEof(message_mod.FULL_MESSAGE_SIZE) catch break; //EOF
+        const full_message = reader.readBytesNoEof(FULL_MESSAGE_SIZE) catch break; //EOF
 
         const target_id = full_message[0..32].*;
 
         std.log.info("New message from {s} to {s}", .{ hex_pubkey, std.fmt.bytesToHex(target_id, .lower) });
 
-        var target_conns: ?[]std.net.Server.Connection = undefined;
-        var my_conns: []std.net.Server.Connection = undefined;
+        var target_conns: ?[]*Mutex(std.io.AnyWriter) = undefined;
+        var my_conns: []*Mutex(std.io.AnyWriter) = undefined;
 
         {
-            const users_lock = &users;
-
-            target_conns = if (std.mem.eql(u8, &target_id, &pubkey)) null else try allocator.dupe(std.net.Server.Connection, users_lock.get(target_id) orelse {
+            target_conns = if (std.mem.eql(u8, &target_id, &pubkey)) null else try allocator.dupe(*Mutex(std.io.AnyWriter), users.get(target_id) orelse {
                 continue;
             });
 
-            my_conns = try allocator.dupe(std.net.Server.Connection, users_lock.get(pubkey) orelse {
+            my_conns = try allocator.dupe(*Mutex(std.io.AnyWriter), users.get(pubkey) orelse {
                 continue;
             });
         }
@@ -76,18 +77,20 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
 
         if (target_conns) |targets| {
             for (targets) |target_conn| {
-                const target_writer = target_conn.stream.writer();
+                const lock = target_conn.lock();
+                defer lock.unlock();
 
-                try target_writer.writeAll(&pubkey);
-                try target_writer.writeAll(&full_message);
+                try lock.data.writeAll(&pubkey);
+                try lock.data.writeAll(&full_message);
             }
         }
 
         for (my_conns) |my_conn| {
-            const target_me_writer = my_conn.stream.writer();
+            const lock = my_conn.lock();
+            defer lock.unlock();
 
-            try target_me_writer.writeAll(&pubkey);
-            try target_me_writer.writeAll(&full_message);
+            try lock.data.writeAll(&pubkey);
+            try lock.data.writeAll(&full_message);
         }
     }
 }
@@ -115,38 +118,34 @@ fn handle_auth(reader: std.io.AnyReader, writer: std.io.AnyWriter) ![32]u8 {
     return try std.crypto.dh.X25519.publicKeyFromEd25519(pubkey);
 }
 
-fn add_connection_to_users(pubkey: [32]u8, conn: std.net.Server.Connection) !void {
+fn add_connection_to_users(pubkey: [32]u8, conn: *Mutex(std.io.AnyWriter)) !void {
     const allocator = std.heap.page_allocator;
 
-    const users_lock = &users;
-
-    const entry = try users_lock.getOrPut(pubkey);
+    const entry = try users.getOrPut(pubkey);
     if (entry.found_existing) {
-        const new_slice = try allocator.alloc(std.net.Server.Connection, entry.value_ptr.len + 1);
+        const new_slice = try allocator.alloc(*Mutex(std.io.AnyWriter), entry.value_ptr.len + 1);
         @memcpy(new_slice[0 .. new_slice.len - 1], entry.value_ptr.*);
         new_slice[new_slice.len - 1] = conn;
         allocator.free(entry.value_ptr.*);
         entry.value_ptr.* = new_slice;
     } else {
-        const slice = try allocator.alloc(std.net.Server.Connection, 1);
+        const slice = try allocator.alloc(*Mutex(std.io.AnyWriter), 1);
         slice[0] = conn;
         entry.value_ptr.* = slice;
     }
 }
 
-fn remove_connection_from_users(pubkey: [32]u8, stream: std.net.Stream) !void {
+fn remove_connection_from_users(pubkey: [32]u8, writer: *Mutex(std.io.AnyWriter)) !void {
     const allocator = std.heap.page_allocator;
 
-    const users_lock = &users;
-
-    const get_entry = users_lock.getEntry(pubkey) orelse @panic("This should not happen");
+    const get_entry = users.getEntry(pubkey) orelse @panic("This should not happen");
     const slice = get_entry.value_ptr.*;
 
     const i: usize = for (slice, 0..) |slice_conn, i| {
-        if (slice_conn.stream.handle == stream.handle) break i;
+        if (slice_conn == writer) break i;
     } else @panic("Could not find connection to delete");
 
-    const new_slice = allocator.alloc(std.net.Server.Connection, slice.len - 1) catch unreachable;
+    const new_slice = allocator.alloc(*Mutex(std.io.AnyWriter), slice.len - 1) catch unreachable;
     @memcpy(new_slice[0..i], slice[0..i]);
     @memcpy(new_slice[i..], slice[i + 1 ..]); //TODO not sure this works if it is the last element
 

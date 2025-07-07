@@ -39,9 +39,3 @@ pub fn deinit() void {
     C.CloseWindow();
     messages.deinit();
 }
-
-test "Test basic window with text and rectangles" {
-    init();
-    defer deinit();
-    _ = try connect_to_server();
-}

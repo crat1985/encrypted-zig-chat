@@ -1,8 +1,5 @@
 const std = @import("std");
 
-pub var lock_count: usize = 0;
-pub var unlock_count: usize = 0;
-
 pub fn Mutex(comptime T: type) type {
     return struct {
         _data: T,
@@ -10,24 +7,28 @@ pub fn Mutex(comptime T: type) type {
 
         const Self = @This();
 
+        pub const Guard = struct {
+            data: *T,
+            m: *std.Thread.Mutex,
+
+            pub fn unlock(self: Guard) void {
+                self.m.unlock();
+            }
+        };
+
         pub fn init(data: T) Self {
             return Self{
                 ._data = data,
             };
         }
 
-        pub fn lock(self: *Self) *T {
+        pub fn lock(self: *Self) Guard {
             self.inner_mutex.lock();
 
-            lock_count += 1;
-
-            return &self._data;
-        }
-
-        pub fn unlock(self: *Self) void {
-            self.inner_mutex.unlock();
-
-            unlock_count += 1;
+            return Guard{
+                .data = &self._data,
+                .m = &self.inner_mutex,
+            };
         }
     };
 }

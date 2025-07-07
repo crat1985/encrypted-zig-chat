@@ -4,12 +4,13 @@ const messages = @import("messages.zig");
 const txt_input = @import("text_input.zig");
 const std = @import("std");
 const Font = @import("font.zig");
-const message_mod = @import("../message.zig");
 const Mutex = @import("../../mutex.zig").Mutex;
+const api = @import("../api.zig");
+const request = @import("../api/request.zig");
 
 const allocator = std.heap.page_allocator;
 
-pub fn draw_dm_screen(my_id: [32]u8, dm: [32]u8, current_message: *[:0]c_int, bounds: C.Rectangle, keyboard_enabled: bool, cursor: *c_int, writer: *Mutex(std.io.AnyWriter), symmetric_key: [32]u8, target_id: *?[32]u8) !void {
+pub fn draw_dm_screen(my_id: [32]u8, dm: [32]u8, current_message: *[:0]c_int, bounds: C.Rectangle, keyboard_enabled: bool, cursor: *c_int, symmetric_key: [32]u8, target_id: *?[32]u8) !void {
     const my_id_hex = try std.fmt.allocPrint(allocator, "{s}", .{std.fmt.bytesToHex(my_id, .lower)});
     defer allocator.free(my_id_hex);
     const dm_hexz = try std.fmt.allocPrintZ(allocator, "{s}", .{std.fmt.bytesToHex(dm, .lower)});
@@ -41,7 +42,6 @@ pub fn draw_dm_screen(my_id: [32]u8, dm: [32]u8, current_message: *[:0]c_int, bo
         try draw_message_input_text(
             current_message,
             input_text_bounds,
-            writer,
             symmetric_key,
             dm,
             keyboard_enabled,
@@ -58,7 +58,7 @@ pub fn draw_dm_screen(my_id: [32]u8, dm: [32]u8, current_message: *[:0]c_int, bo
     try draw_messages(dm, dm_hexz, messages_bounds, cursor);
 }
 
-fn draw_message_input_text(message: *[:0]c_int, bounds: C.Rectangle, writer: *Mutex(std.io.AnyWriter), symmetric_key: [32]u8, target_id: [32]u8, is_enabled: bool) !void {
+fn draw_message_input_text(message: *[:0]c_int, bounds: C.Rectangle, symmetric_key: [32]u8, target_id: [32]u8, is_enabled: bool) !void {
     const txt_y: c_int = @intFromFloat(bounds.y + bounds.height / 2 - GUI.FONT_SIZE);
 
     const enter_message_txt = "Enter message :";
@@ -74,7 +74,11 @@ fn draw_message_input_text(message: *[:0]c_int, bounds: C.Rectangle, writer: *Mu
 
                 const msg_utf8_owned = try allocator.dupe(u8, msg_utf8_raylib[0..n]);
 
-                try message_mod.send_request(writer, symmetric_key, target_id, .{ .raw_message = msg_utf8_owned });
+                try request.send_request(.{
+                    .data = .{ .raw_message = msg_utf8_owned },
+                    .symmetric_key = symmetric_key,
+                    .target_id = target_id,
+                });
                 allocator.free(message.*);
 
                 message.* = try allocator.allocSentinel(c_int, 0, 0);
@@ -130,7 +134,7 @@ fn draw_messages(dm: [32]u8, dm_hexz: [:0]u8, bounds: C.Rectangle, cursor: *c_in
                 cursor.* = C.MOUSE_CURSOR_POINTING_HAND;
 
                 if (C.IsMouseButtonPressed(C.MOUSE_BUTTON_LEFT)) {
-                    const relative_path = try std.fs.path.join(allocator, &.{ @import("../../client.zig").DECRYPTED_OUTPUT_DIR, discussion_message.content });
+                    const relative_path = try std.fs.path.join(allocator, &.{ @import("../api/constants.zig").DECRYPTED_OUTPUT_DIR, discussion_message.content });
                     defer allocator.free(relative_path);
 
                     try @import("../open_file_default.zig").openWithDefault(relative_path);
