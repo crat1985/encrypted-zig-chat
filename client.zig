@@ -19,15 +19,23 @@ pub const DMState = union(enum) {
     NotManual: void,
 };
 
-pub fn main() !void {
+pub fn init_everything() void {
     GUI.init();
-    defer GUI.deinit();
-
     request.send_requests = std.AutoHashMap(u64, request.SendRequest).init(allocator);
-    defer request.send_requests.deinit();
-
     request.receive_requests = std.AutoHashMap(u64, request.ReceiveRequest).init(allocator);
-    defer request.receive_requests.deinit();
+}
+
+pub fn deinit_everything() void {
+    request.receive_requests.deinit();
+
+    request.send_requests.deinit();
+
+    GUI.deinit();
+}
+
+pub fn main() !void {
+    init_everything();
+    defer deinit_everything();
 
     const _stream = try GUI.connect_to_server();
     defer _stream.close();
@@ -113,7 +121,18 @@ pub fn main() !void {
 
                     const file = try std.fs.openFileAbsolute(file_path[0..file_path_n], .{});
 
-                    const msg = request.SendRequest{ .symmetric_key = symmetric_key, .target_id = target, .data = .{ .file = .{ .file = file, .name = file_name_array, .name_len = @intCast(file_name_n), .size = (try file.metadata()).size() } } };
+                    const msg = request.SendRequest{
+                        .symmetric_key = symmetric_key,
+                        .target_id = target,
+                        .data = .{
+                            .file = .{
+                                .file = file,
+                                .name = file_name_array,
+                                .name_len = @intCast(file_name_n),
+                                .size = (try file.metadata()).size(),
+                            },
+                        },
+                    };
 
                     try request.send_request(msg);
                 }

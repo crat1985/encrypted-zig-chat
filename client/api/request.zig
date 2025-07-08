@@ -4,6 +4,7 @@ const EncryptedPart = @import("../message/encrypted.zig").EncryptedPart;
 const constants = @import("constants.zig");
 const ACTION_DATA_SIZE = constants.ACTION_DATA_SIZE;
 const PAYLOAD_AND_PADDING_SIZE = constants.PAYLOAD_AND_PADDING_SIZE;
+const send = @import("send.zig");
 
 const SentFullEncryptedMessage = @import("../message/unencrypted.zig").SentFullEncryptedMessage;
 const socket = @import("socket.zig");
@@ -43,8 +44,6 @@ pub fn send_request(message_req: SendRequest) !void {
         .data = raw_action_data,
     };
 
-    const full_message = SentFullEncryptedMessage.encrypt(message_req.symmetric_key, message_req.target_id, encrypted_part);
-
     {
         const entry = try send_requests.getOrPut(msg_id);
         if (entry.found_existing) std.debug.panic("Dupplicate message id generated (should not happen) : `{d}`", .{msg_id});
@@ -52,10 +51,7 @@ pub fn send_request(message_req: SendRequest) !void {
         entry.value_ptr.* = message_req;
     }
 
-    const lock = socket.lock_writer();
-    defer lock.unlock();
-
-    try lock.data.writeAll(std.mem.asBytes(&full_message));
+    try send.send(message_req.symmetric_key, message_req.target_id, encrypted_part);
 }
 
 pub const SendRequestData = union(enum) {
@@ -98,3 +94,24 @@ pub const ReceiveRequest = struct {
 };
 
 pub var receive_requests: std.AutoHashMap(u64, ReceiveRequest) = undefined;
+
+// test send_request {
+//     const server_mod = @import("../../server.zig");
+
+//     const s_thread = try std.Thread.spawn(.{}, server_mod.main, .{});
+//     defer s_thread.join();
+
+//     std.time.sleep(std.time.ns_per_ms * 300);
+
+//     const client = @import("../../client.zig");
+//     client.init_everything();
+//     defer client.deinit_everything();
+
+//     const stream = try std.net.tcpConnectToAddress(server_mod.DEFAULT_ADDR);
+
+//     const auth = @import("auth.zig");
+//     var derived: [32]u8 = undefined;
+//     std.crypto.random.bytes(&derived);
+
+//     const keypair = try auth.auth(derived, stream.reader().any());
+// }

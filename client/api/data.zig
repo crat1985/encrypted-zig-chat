@@ -3,6 +3,7 @@ const constants = @import("constants.zig");
 const PAYLOAD_AND_PADDING_SIZE = constants.PAYLOAD_AND_PADDING_SIZE;
 const FULL_MESSAGE_SIZE = constants.FULL_MESSAGE_SIZE;
 const Int = @import("../int.zig");
+const send = @import("send.zig");
 
 const EncryptedPart = @import("../message/encrypted.zig").EncryptedPart;
 const SentFullEncryptedMessage = @import("../message/unencrypted.zig").SentFullEncryptedMessage;
@@ -11,6 +12,9 @@ const SendRequest = @import("request.zig").SendRequest;
 
 pub fn send_data(send_req: SendRequest, msg_id: u64) !void {
     const total_size = send_req.data.total_size();
+
+    // std.debug.print("\n\n\nDecrypting message {s}\n\n", .{std.fmt.bytesToHex(send_req.target_id, .lower)});
+    // std.debug.print("Send data symmetric key = {s}\n\n\n", .{std.fmt.bytesToHex(send_req.symmetric_key, .lower)});
 
     const parts_count = (total_size + (PAYLOAD_AND_PADDING_SIZE - 1)) / PAYLOAD_AND_PADDING_SIZE;
 
@@ -32,11 +36,7 @@ pub fn send_data(send_req: SendRequest, msg_id: u64) !void {
 
         const encrypted_part = EncryptedPart.init(msg_id, action);
 
-        const full_msg = SentFullEncryptedMessage.encrypt(send_req.symmetric_key, send_req.target_id, encrypted_part);
-
-        const lock = socket.lock_writer();
-        defer lock.unlock();
-        try lock.data.writeAll(std.mem.asBytes(&full_msg));
+        try send.send(send_req.symmetric_key, send_req.target_id, encrypted_part);
 
         {
             const total_sent: f32 = @floatFromInt(i * PAYLOAD_AND_PADDING_SIZE + end);

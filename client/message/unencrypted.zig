@@ -38,7 +38,7 @@ pub const SentFullEncryptedMessage = extern struct {
 
         ChaCha20Poly1305.encrypt(&encrypted, &tag, std.mem.asBytes(&unencrypted), &.{}, nonce, symmetric_key);
 
-        std.debug.print("Tag = {s}, Nonce = {s}, Symmetric key = {s}\n", .{ std.fmt.bytesToHex(tag, .lower), std.fmt.bytesToHex(nonce, .lower), std.fmt.bytesToHex(symmetric_key, .lower) });
+        // std.debug.print("Tag = {s}, Nonce = {s}, Symmetric key = {s}\n", .{ std.fmt.bytesToHex(tag, .lower), std.fmt.bytesToHex(nonce, .lower), std.fmt.bytesToHex(symmetric_key, .lower) });
 
         return Self{
             .target_id = target_id,
@@ -51,7 +51,7 @@ pub const SentFullEncryptedMessage = extern struct {
     pub fn decrypt(self: Self, symmetric_key: [32]u8) ![BLOCK_SIZE]u8 {
         var decrypted: [BLOCK_SIZE]u8 = undefined;
 
-        std.debug.print("Tag = {s}, Nonce = {s}, Symmetric key = {s}\n", .{ std.fmt.bytesToHex(self.tag, .lower), std.fmt.bytesToHex(self.nonce, .lower), std.fmt.bytesToHex(symmetric_key, .lower) });
+        // std.debug.print("Tag = {s}, Nonce = {s}, Symmetric key = {s}\n", .{ std.fmt.bytesToHex(self.tag, .lower), std.fmt.bytesToHex(self.nonce, .lower), std.fmt.bytesToHex(symmetric_key, .lower) });
 
         try ChaCha20Poly1305.decrypt(&decrypted, &self.encrypted, self.tag, &.{}, self.nonce, symmetric_key);
 

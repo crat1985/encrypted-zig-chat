@@ -14,12 +14,12 @@ pub const std_options: std.Options = .{
     .log_level = .info,
 };
 
+pub const DEFAULT_ADDR = std.net.Address.initIp4(.{ 0, 0, 0, 0 }, 8080);
+
 pub fn main() !void {
     users = HashMapType.init(std.heap.page_allocator);
 
-    const addr = std.net.Address.initIp4(.{ 0, 0, 0, 0 }, 8080);
-
-    var server = try addr.listen(.{
+    var server = try DEFAULT_ADDR.listen(.{
         .reuse_address = true,
         .reuse_port = true,
     });
@@ -57,6 +57,8 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
         const full_message = reader.readBytesNoEof(FULL_MESSAGE_SIZE) catch break; //EOF
 
         const target_id = full_message[0..32].*;
+
+        std.debug.print("UNECRYPTED DATA = {s}\n", .{std.fmt.bytesToHex(full_message[32 .. 32 + constants.FULL_MESSAGE_SIZE - constants.BLOCK_SIZE], .lower)});
 
         std.log.info("New message from {s} to {s}", .{ hex_pubkey, std.fmt.bytesToHex(target_id, .lower) });
 
