@@ -15,4 +15,4 @@ This chat is E2EE.
     - [x] Send files
     - [ ] Ask the user for confirmation to accept the message if the message is either from a new sender or too large (e.g. 10ko)
     - [ ] E2EE the files
-    - [ ] Patch Windows lags and "Not responding issues"
+    - [ ] Patch Windows lags and "Not responding" issues
