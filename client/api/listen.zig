@@ -257,21 +257,23 @@ fn wait_for_accept_or_decline(msg_id: u64, symmetric_key: [32]u8, target_id: [32
     var padding: [ACTION_DATA_SIZE]u8 = undefined;
     std.crypto.random.bytes(&padding);
 
-    const stdout = std.io.getStdOut().writer();
-    const stdin = std.io.getStdIn().reader();
+    // const stdout = std.io.getStdOut().writer();
+    // const stdin = std.io.getStdIn().reader();
 
-    const is_accept: bool = while (true) {
-        try stdout.writeAll("Accept (y/n) ? ");
-        const res = try stdin.readByte();
-        _ = try stdin.readByte(); //skip \n
-        switch (res) {
-            'y' => break true,
-            'n' => break false,
-            else => {
-                // try stdout.writeByte('\n');
-            },
-        }
-    };
+    // const is_accept: bool = while (true) {
+    //     try stdout.writeAll("Accept (y/n) ? ");
+    //     const res = try stdin.readByte();
+    //     _ = try stdin.readByte(); //skip \n
+    //     switch (res) {
+    //         'y' => break true,
+    //         'n' => break false,
+    //         else => {
+    //             // try stdout.writeByte('\n');
+    //         },
+    //     }
+    // };
+
+    const is_accept = true;
 
     switch (is_accept) {
         true => {
