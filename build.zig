@@ -25,6 +25,8 @@ pub fn build(b: *std.Build) void {
     const client_exe = generate_exe(b, target, optimize, test_step, .client);
 
     setup_raylib(b, target, optimize, client_exe);
+
+    _ = generate_exe(b, target, optimize, test_step, .e2ee_file_decrypt);
 }
 
 fn setup_raylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, exe: *std.Build.Step.Compile) void {
@@ -44,6 +46,7 @@ fn setup_raylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.b
 const ExeKind = enum(u8) {
     server,
     client,
+    e2ee_file_decrypt,
 };
 
 fn generate_exe(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, test_step: *std.Build.Step, comptime kind: ExeKind) *std.Build.Step.Compile {

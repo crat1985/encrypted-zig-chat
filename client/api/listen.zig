@@ -4,6 +4,7 @@ const EncryptedPart = @import("../message/encrypted.zig").EncryptedPart;
 const ReceivedFullEncryptedMessage = @import("../message/unencrypted.zig").ReceivedFullEncryptedMessage;
 const SentFullEncryptedMessage = @import("../message/unencrypted.zig").SentFullEncryptedMessage;
 const send = @import("send.zig");
+const utils = @import("utils.zig");
 
 const constants = @import("constants.zig");
 const FULL_MESSAGE_SIZE = constants.FULL_MESSAGE_SIZE;
@@ -52,6 +53,8 @@ fn handle_message(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !vo
 
     const encryption_pubkey = if (std.mem.eql(u8, &pubkey, &full_message.from)) full_message.data.target_id else full_message.from;
 
+    const dm_id_hex = std.fmt.bytesToHex(encryption_pubkey, .lower);
+
     const other_pubkey = std.crypto.ecc.Curve25519.fromBytes(encryption_pubkey);
 
     // std.debug.print("\n\n\nDecrypting message from {s} to {s}\n\n\n", .{ std.fmt.bytesToHex(full_message.from, .lower), std.fmt.bytesToHex(full_message.data.target_id, .lower) });
@@ -72,12 +75,12 @@ fn handle_message(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !vo
         .SendMessageRequest => {
             const smr: EncryptedPart.SendMessageRequest = std.mem.bytesAsValue(EncryptedPart.SendMessageRequest, &decrypted.data).*;
 
-            try handle_request(is_from_me, is_from_me_to_me, msg_id, .{ .msg = smr }, symmetric_key, full_message.from);
+            try handle_request(is_from_me, is_from_me_to_me, msg_id, .{ .msg = smr }, symmetric_key, full_message.from, dm_id_hex);
         },
         .SendFileRequest => {
             const sfr: EncryptedPart.SendFileRequest = std.mem.bytesAsValue(EncryptedPart.SendFileRequest, &decrypted.data).*;
 
-            try handle_request(is_from_me, is_from_me_to_me, msg_id, .{ .file = sfr }, symmetric_key, full_message.from);
+            try handle_request(is_from_me, is_from_me_to_me, msg_id, .{ .file = sfr }, symmetric_key, full_message.from, dm_id_hex);
         },
         .SendData => {
             const sd: EncryptedPart.SendData = std.mem.bytesAsValue(EncryptedPart.SendData, &decrypted.data).*;
@@ -135,7 +138,10 @@ fn handle_message(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !vo
 
                 //write
                 switch (value.data) {
-                    .file => |f| try f.file.writeAll(content),
+                    .file => |f| {
+                        const encrypted_block = utils.encrypt_chacha(sd.payload_and_padding.len, &sd.payload_and_padding, symmetric_key);
+                        try f.file.writeAll(&encrypted_block);
+                    },
                     .raw_message => |rm| @memcpy(rm[@as(u64, index) * constants.PAYLOAD_AND_PADDING_SIZE .. @as(u64, index) * constants.PAYLOAD_AND_PADDING_SIZE + content.len], content),
                 }
 
@@ -188,7 +194,7 @@ fn handle_message(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !vo
 
 const HandleRequestReqData = union(enum) { file: EncryptedPart.SendFileRequest, msg: EncryptedPart.SendMessageRequest };
 
-fn handle_request(is_from_me: bool, is_from_me_to_me: bool, msg_id: u64, req_data: HandleRequestReqData, symmetric_key: [32]u8, target_id: [32]u8) !void {
+fn handle_request(is_from_me: bool, is_from_me_to_me: bool, msg_id: u64, req_data: HandleRequestReqData, symmetric_key: [32]u8, target_id: [32]u8, dm_id_hex: [64]u8) !void {
     const total_size_bytes = switch (req_data) {
         .file => |f| f.total_size,
         .msg => |m| m.total_size,
@@ -210,17 +216,19 @@ fn handle_request(is_from_me: bool, is_from_me_to_me: bool, msg_id: u64, req_dat
     const receive_req_data: request.ReceiveRequestData = switch (req_data) {
         .file => |f| blk: {
             const cwd = std.fs.cwd();
-            cwd.makeDir(DECRYPTED_OUTPUT_DIR) catch |err| {
-                switch (err) {
-                    error.PathAlreadyExists => {},
-                    else => return err,
-                }
-            };
-
-            var dir = try cwd.openDir(DECRYPTED_OUTPUT_DIR, .{});
+            var dir = try utils.mkdir_if_absent(cwd, DECRYPTED_OUTPUT_DIR);
             defer dir.close();
 
-            const file = try dir.createFile(f.filename[0..f.filename_len], .{});
+            var dm_id_dir = try utils.mkdir_if_absent(dir, &dm_id_hex);
+            defer dm_id_dir.close();
+
+            const file = try dm_id_dir.createFile(f.filename[0..f.filename_len], .{});
+
+            {
+                const file_size_encrypted = utils.encrypt_chacha(8, &f.total_size, symmetric_key);
+
+                try file.writeAll(&file_size_encrypted);
+            }
 
             break :blk .{ .file = .{ .file = file, .filename = f.filename, .filename_len = f.filename_len } };
         },

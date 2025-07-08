@@ -6,8 +6,6 @@ const ACTION_DATA_SIZE = constants.ACTION_DATA_SIZE;
 const BLOCK_SIZE = constants.BLOCK_SIZE;
 const PAYLOAD_AND_PADDING_SIZE = constants.PAYLOAD_AND_PADDING_SIZE;
 
-const ChaCha20Poly1305 = std.crypto.aead.chacha_poly.ChaCha20Poly1305;
-
 pub const EncryptedPart = extern struct {
     action_kind: ActionKind,
     msg_id: [8]u8,

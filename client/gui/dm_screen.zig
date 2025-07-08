@@ -137,7 +137,7 @@ fn draw_messages(dm: [32]u8, dm_hexz: [:0]u8, bounds: C.Rectangle, cursor: *c_in
                     const relative_path = try std.fs.path.join(allocator, &.{ @import("../api/constants.zig").DECRYPTED_OUTPUT_DIR, discussion_message.content });
                     defer allocator.free(relative_path);
 
-                    try @import("../open_file_default.zig").openWithDefault(relative_path);
+                    //TODO open them somehow ?
                 }
             }
 
