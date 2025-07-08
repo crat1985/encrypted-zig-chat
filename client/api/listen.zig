@@ -66,16 +66,18 @@ fn handle_message(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !vo
 
     const is_from_me = std.mem.eql(u8, &full_message.from, &pubkey);
 
+    const is_from_me_to_me = is_from_me and std.mem.eql(u8, &full_message.data.target_id, &pubkey);
+
     switch (decrypted.action_kind) {
         .SendMessageRequest => {
             const smr: EncryptedPart.SendMessageRequest = std.mem.bytesAsValue(EncryptedPart.SendMessageRequest, &decrypted.data).*;
 
-            try handle_request(is_from_me, msg_id, .{ .msg = smr }, symmetric_key, full_message.from);
+            try handle_request(is_from_me, is_from_me_to_me, msg_id, .{ .msg = smr }, symmetric_key, full_message.from);
         },
         .SendFileRequest => {
             const sfr: EncryptedPart.SendFileRequest = std.mem.bytesAsValue(EncryptedPart.SendFileRequest, &decrypted.data).*;
 
-            try handle_request(is_from_me, msg_id, .{ .file = sfr }, symmetric_key, full_message.from);
+            try handle_request(is_from_me, is_from_me_to_me, msg_id, .{ .file = sfr }, symmetric_key, full_message.from);
         },
         .SendData => {
             const sd: EncryptedPart.SendData = std.mem.bytesAsValue(EncryptedPart.SendData, &decrypted.data).*;
@@ -154,7 +156,7 @@ fn handle_message(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !vo
             }
         },
         .Accept => {
-            if (is_from_me) {
+            if (is_from_me and !is_from_me_to_me) {
                 const receive_req = unvalidated_receive_requests.fetchRemove(msg_id) orelse {
                     std.debug.print("Cannot find request {d} accepted by myself\n", .{msg_id});
                     return;
@@ -186,7 +188,7 @@ fn handle_message(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !vo
 
 const HandleRequestReqData = union(enum) { file: EncryptedPart.SendFileRequest, msg: EncryptedPart.SendMessageRequest };
 
-fn handle_request(is_from_me: bool, msg_id: u64, req_data: HandleRequestReqData, symmetric_key: [32]u8, target_id: [32]u8) !void {
+fn handle_request(is_from_me: bool, is_from_me_to_me: bool, msg_id: u64, req_data: HandleRequestReqData, symmetric_key: [32]u8, target_id: [32]u8) !void {
     const total_size_bytes = switch (req_data) {
         .file => |f| f.total_size,
         .msg => |m| m.total_size,
@@ -238,7 +240,7 @@ fn handle_request(is_from_me: bool, msg_id: u64, req_data: HandleRequestReqData,
 
     // std.debug.print("ReceiveRequest symmetric key = {s}\n", .{std.fmt.bytesToHex(rr.symmetric_key, .lower)});
 
-    if (is_from_me) {
+    if (is_from_me and !is_from_me_to_me) {
         const entry = try receive_requests.getOrPut(msg_id);
         if (entry.found_existing) @panic("no");
 
