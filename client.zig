@@ -23,9 +23,11 @@ pub fn init_everything() void {
     GUI.init();
     request.send_requests = std.AutoHashMap(u64, request.SendRequest).init(allocator);
     request.receive_requests = std.AutoHashMap(u64, request.ReceiveRequest).init(allocator);
+    request.unvalidated_receive_requests = std.AutoHashMap(u64, request.ReceiveRequest).init(allocator);
 }
 
 pub fn deinit_everything() void {
+    request.unvalidated_receive_requests.deinit();
     request.receive_requests.deinit();
 
     request.send_requests.deinit();

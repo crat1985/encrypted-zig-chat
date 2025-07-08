@@ -15,6 +15,7 @@ const request = @import("request.zig");
 const SendRequest = request.SendRequest;
 const ReceiveRequest = request.ReceiveRequest;
 const receive_requests = &request.receive_requests;
+const unvalidated_receive_requests = &request.unvalidated_receive_requests;
 const GUI = @import("../gui.zig");
 const socket = @import("socket.zig");
 
@@ -31,16 +32,23 @@ pub fn read_messages(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) 
 fn handle_message(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !void {
     const full_message_bytes = try reader.readBytesNoEof(FULL_MESSAGE_SIZE + 32);
 
+    // {
+    //     var hasher = std.hash.Wyhash.init(0);
+    //     hasher.update(full_message_bytes[32..]);
+    //     const hash = hasher.final();
+    //     std.debug.print("\n\nReceived hash = {d}\n\n\n", .{hash});
+    // }
+
     const full_message: ReceivedFullEncryptedMessage = std.mem.bytesAsValue(ReceivedFullEncryptedMessage, &full_message_bytes).*;
 
-    {
-        const full_message_bytes_hex = std.fmt.bytesToHex(full_message_bytes[0 .. constants.FULL_MESSAGE_SIZE - constants.BLOCK_SIZE], .lower);
+    // {
+    //     const full_message_bytes_hex = std.fmt.bytesToHex(full_message_bytes[0 .. constants.FULL_MESSAGE_SIZE - constants.BLOCK_SIZE], .lower);
 
-        std.debug.print("From = {s}, UNECRYPTED DATA = {s}\n", .{
-            std.fmt.bytesToHex(full_message.from, .lower),
-            full_message_bytes_hex,
-        });
-    }
+    //     std.debug.print("From = {s}, UNECRYPTED DATA = {s}\n", .{
+    //         std.fmt.bytesToHex(full_message.from, .lower),
+    //         full_message_bytes_hex,
+    //     });
+    // }
 
     const encryption_pubkey = if (std.mem.eql(u8, &pubkey, &full_message.from)) full_message.data.target_id else full_message.from;
 
@@ -56,16 +64,18 @@ fn handle_message(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !vo
 
     const msg_id = std.mem.readInt(u64, &decrypted.msg_id, .big);
 
+    const is_from_me = std.mem.eql(u8, &full_message.from, &pubkey);
+
     switch (decrypted.action_kind) {
         .SendMessageRequest => {
             const smr: EncryptedPart.SendMessageRequest = std.mem.bytesAsValue(EncryptedPart.SendMessageRequest, &decrypted.data).*;
 
-            try handle_request(msg_id, .{ .msg = smr }, symmetric_key, full_message.from);
+            try handle_request(is_from_me, msg_id, .{ .msg = smr }, symmetric_key, full_message.from);
         },
         .SendFileRequest => {
             const sfr: EncryptedPart.SendFileRequest = std.mem.bytesAsValue(EncryptedPart.SendFileRequest, &decrypted.data).*;
 
-            try handle_request(msg_id, .{ .file = sfr }, symmetric_key, full_message.from);
+            try handle_request(is_from_me, msg_id, .{ .file = sfr }, symmetric_key, full_message.from);
         },
         .SendData => {
             const sd: EncryptedPart.SendData = std.mem.bytesAsValue(EncryptedPart.SendData, &decrypted.data).*;
@@ -124,7 +134,7 @@ fn handle_message(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !vo
                 //write
                 switch (value.data) {
                     .file => |f| try f.file.writeAll(content),
-                    .raw_message => |rm| @memcpy(rm[index .. index + content.len], content),
+                    .raw_message => |rm| @memcpy(rm[@as(u64, index) * constants.PAYLOAD_AND_PADDING_SIZE .. @as(u64, index) * constants.PAYLOAD_AND_PADDING_SIZE + content.len], content),
                 }
 
                 if (is_last) {
@@ -144,22 +154,31 @@ fn handle_message(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !vo
             }
         },
         .Accept => {
-            // const encrypted_part: EncryptedPart.AcceptOrDecline = std.mem.bytesAsValue(EncryptedPart.AcceptOrDecline, &decrypted_parsed.data).*;
+            if (is_from_me) {
+                const receive_req = unvalidated_receive_requests.fetchRemove(msg_id) orelse {
+                    std.debug.print("Cannot find request {d} accepted by myself\n", .{msg_id});
+                    return;
+                };
+                try receive_requests.put(msg_id, receive_req.value);
+            } else {
+                const entry = send_requests.fetchRemove(msg_id) orelse std.debug.panic("Invalid send request id {d}\n", .{decrypted.msg_id});
 
-            const entry = send_requests.fetchRemove(msg_id) orelse std.debug.panic("Invalid send request id {d}\n", .{decrypted.msg_id});
+                switch (entry.value.data) {
+                    .raw_message => |rm| std.debug.print("Accepted message request of size {d}o\n", .{rm.len}),
+                    .file => |f| std.debug.print("Accepted file send request `{s}` of size {d}o\n", .{ f.name[0..f.name_len], f.size }),
+                }
 
-            switch (entry.value.data) {
-                .raw_message => |rm| std.debug.print("Accepted message request of size {d}o\n", .{rm.len}),
-                .file => |f| std.debug.print("Accepted file send request `{s}` of size {d}o\n", .{ f.name[0..f.name_len], f.size }),
+                _ = try std.Thread.spawn(.{}, @import("data.zig").send_data, .{ entry.value, msg_id });
             }
-
-            _ = try std.Thread.spawn(.{}, @import("data.zig").send_data, .{ entry.value, msg_id });
         },
         .Decline => {
-            // const encrypted_part: EncryptedPart.AcceptOrDecline = std.mem.bytesAsValue(EncryptedPart.AcceptOrDecline, &decrypted_parsed.data).*;
-
-            if (!send_requests.remove(msg_id)) {
-                std.log.err("Trying to delete invalid send request id {d}\n", .{msg_id});
+            if (is_from_me) {
+                _ = unvalidated_receive_requests.remove(msg_id);
+                _ = receive_requests.remove(msg_id);
+            } else {
+                if (!send_requests.remove(msg_id)) {
+                    std.log.err("Trying to delete invalid send request id {d}\n", .{msg_id});
+                }
             }
         },
     }
@@ -167,7 +186,7 @@ fn handle_message(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !vo
 
 const HandleRequestReqData = union(enum) { file: EncryptedPart.SendFileRequest, msg: EncryptedPart.SendMessageRequest };
 
-fn handle_request(msg_id: u64, req_data: HandleRequestReqData, symmetric_key: [32]u8, target_id: [32]u8) !void {
+fn handle_request(is_from_me: bool, msg_id: u64, req_data: HandleRequestReqData, symmetric_key: [32]u8, target_id: [32]u8) !void {
     const total_size_bytes = switch (req_data) {
         .file => |f| f.total_size,
         .msg => |m| m.total_size,
@@ -185,11 +204,6 @@ fn handle_request(msg_id: u64, req_data: HandleRequestReqData, symmetric_key: [3
             std.debug.print("New message request of size {d}o\n", .{total_size});
         },
     }
-
-    var padding: [ACTION_DATA_SIZE]u8 = undefined;
-    std.crypto.random.bytes(&padding);
-
-    const encrypted_part = EncryptedPart.init(msg_id, .{ .Accept = .{ ._padding = padding } });
 
     const receive_req_data: request.ReceiveRequestData = switch (req_data) {
         .file => |f| blk: {
@@ -224,12 +238,54 @@ fn handle_request(msg_id: u64, req_data: HandleRequestReqData, symmetric_key: [3
 
     // std.debug.print("ReceiveRequest symmetric key = {s}\n", .{std.fmt.bytesToHex(rr.symmetric_key, .lower)});
 
-    {
+    if (is_from_me) {
         const entry = try receive_requests.getOrPut(msg_id);
         if (entry.found_existing) @panic("no");
 
         entry.value_ptr.* = rr;
+    } else {
+        const entry = try unvalidated_receive_requests.getOrPut(msg_id);
+        if (entry.found_existing) @panic("no");
+
+        entry.value_ptr.* = rr;
+
+        _ = try std.Thread.spawn(.{}, wait_for_accept_or_decline, .{ msg_id, symmetric_key, target_id });
     }
+}
+
+fn wait_for_accept_or_decline(msg_id: u64, symmetric_key: [32]u8, target_id: [32]u8) !void {
+    var padding: [ACTION_DATA_SIZE]u8 = undefined;
+    std.crypto.random.bytes(&padding);
+
+    const stdout = std.io.getStdOut().writer();
+    const stdin = std.io.getStdIn().reader();
+
+    const is_accept: bool = while (true) {
+        try stdout.writeAll("Accept (y/n) ? ");
+        const res = try stdin.readByte();
+        _ = try stdin.readByte(); //skip \n
+        switch (res) {
+            'y' => break true,
+            'n' => break false,
+            else => {
+                // try stdout.writeByte('\n');
+            },
+        }
+    };
+
+    switch (is_accept) {
+        true => {
+            const receive_req = unvalidated_receive_requests.fetchRemove(msg_id) orelse return;
+            try receive_requests.put(msg_id, receive_req.value);
+        },
+        false => {
+            _ = unvalidated_receive_requests.remove(msg_id);
+        },
+    }
+
+    const action = if (is_accept) EncryptedPart.Action{ .Accept = .{ ._padding = padding } } else EncryptedPart.Action{ .Decline = .{ ._padding = padding } };
+
+    const encrypted_part = EncryptedPart.init(msg_id, action);
 
     try send.send(symmetric_key, target_id, encrypted_part);
 }

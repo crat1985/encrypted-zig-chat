@@ -80,6 +80,7 @@ pub const SendRequest = struct {
 };
 
 pub var send_requests: std.AutoHashMap(u64, SendRequest) = undefined;
+// pub var my_send_requests: std.AutoHashMap(u64, SendRequest) = undefined;
 
 pub const ReceiveRequestData = union(enum) {
     raw_message: []u8,
@@ -94,6 +95,7 @@ pub const ReceiveRequest = struct {
 };
 
 pub var receive_requests: std.AutoHashMap(u64, ReceiveRequest) = undefined;
+pub var unvalidated_receive_requests: std.AutoHashMap(u64, ReceiveRequest) = undefined;
 
 // test send_request {
 //     const server_mod = @import("../../server.zig");

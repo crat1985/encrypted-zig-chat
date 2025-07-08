@@ -56,9 +56,15 @@ fn handle_conn(conn: std.net.Server.Connection) !void {
     while (true) {
         const full_message = reader.readBytesNoEof(FULL_MESSAGE_SIZE) catch break; //EOF
 
+        // var hasher = std.hash.Wyhash.init(0);
+        // hasher.update(&full_message);
+        // const hash = hasher.final();
+
+        // std.debug.print("\n\nHash = {d}\n\n\n", .{hash});
+
         const target_id = full_message[0..32].*;
 
-        std.debug.print("UNECRYPTED DATA = {s}\n", .{std.fmt.bytesToHex(full_message[32 .. 32 + constants.FULL_MESSAGE_SIZE - constants.BLOCK_SIZE], .lower)});
+        // std.debug.print("UNECRYPTED DATA = {s}\n", .{std.fmt.bytesToHex(full_message[32 .. 32 + constants.FULL_MESSAGE_SIZE - constants.BLOCK_SIZE], .lower)});
 
         std.log.info("New message from {s} to {s}", .{ hex_pubkey, std.fmt.bytesToHex(target_id, .lower) });
 
