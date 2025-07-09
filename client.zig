@@ -5,6 +5,8 @@ const C = @import("client/gui/c.zig").C;
 const mutex = @import("mutex.zig");
 const Mutex = mutex.Mutex;
 const request = @import("client/api/request.zig");
+const Font = @import("client/gui/font.zig");
+const listen = @import("client/api/listen.zig");
 
 pub const std_options: std.Options = .{
     // Set the log level to info
@@ -74,36 +76,51 @@ pub fn main() !void {
 
         C.ClearBackground(C.BLACK);
 
-        GUI.WIDTH = C.GetScreenWidth();
-        GUI.HEIGHT = C.GetScreenHeight();
+        GUI.WIDTH = @floatFromInt(C.GetScreenWidth());
+        GUI.HEIGHT = @floatFromInt(C.GetScreenHeight());
 
-        const sidebar_rect = C.Rectangle{
+        const top_left_display_bounds = C.Rectangle{
             .x = 0,
             .y = 0,
-            .width = @floatFromInt(if (target_id) |_| @divTrunc(GUI.WIDTH, 4) else GUI.WIDTH),
-            .height = @floatFromInt(GUI.HEIGHT),
+            .width = GUI.WIDTH,
+            .height = GUI.FONT_SIZE * 2,
         };
 
-        try GUI.draw_choose_discussion_sidebar(pubkey, &target_id, &cursor, sidebar_rect, &dm_state);
+        try @import("client/gui/id_top_left_display.zig").draw_id_top_left_display(pubkey, &cursor, top_left_display_bounds);
+
+        const is_there_req = request.receive_requests.count() != 0 or request.unvalidated_receive_requests.count() != 0;
+
+        const sidebar_width = if (target_id) |_| GUI.WIDTH / 4 else if (is_there_req) GUI.WIDTH * 3 / 4 else GUI.WIDTH;
+
+        const sidebar_rect = C.Rectangle{
+            .x = top_left_display_bounds.x,
+            .y = top_left_display_bounds.y + top_left_display_bounds.height,
+            .width = sidebar_width,
+            .height = GUI.HEIGHT - top_left_display_bounds.height,
+        };
+
+        try GUI.draw_choose_discussion_sidebar(sidebar_rect, &dm_state, &target_id);
 
         if (target_id) |target| {
+            const dm_screen_width = if (is_there_req) GUI.WIDTH / 2 else GUI.WIDTH * 3 / 4;
+
+            const dm_screen_bounds = C.Rectangle{
+                .x = sidebar_rect.x + sidebar_rect.width,
+                .y = sidebar_rect.y,
+                .width = dm_screen_width,
+                .height = sidebar_rect.height,
+            };
+
             const target_id_parsed = std.crypto.dh.X25519.Curve.fromBytes(target);
 
             const symmetric_key = try get_symmetric_key(target_id_parsed, x25519_key_pair.secret_key);
-
-            const bounds = C.Rectangle{
-                .x = sidebar_rect.width,
-                .y = 0,
-                .width = @as(f32, @floatFromInt(GUI.WIDTH)) - sidebar_rect.width,
-                .height = @floatFromInt(GUI.HEIGHT),
-            };
 
             const message_keyboard_enabled = switch (dm_state) {
                 .NotManual => true,
                 .Manual => false,
             };
 
-            try GUI.draw_dm_screen(pubkey, target, &current_message, bounds, message_keyboard_enabled, &cursor, symmetric_key, &target_id);
+            try GUI.draw_dm_screen(pubkey, target, &current_message, dm_screen_bounds, message_keyboard_enabled, &cursor, symmetric_key, &target_id);
 
             C.DrawLineV(.{ .x = sidebar_rect.x + sidebar_rect.width, .y = sidebar_rect.y }, .{ .x = sidebar_rect.x + sidebar_rect.width, .y = sidebar_rect.y + sidebar_rect.height }, C.WHITE);
 
@@ -140,6 +157,26 @@ pub fn main() !void {
                 }
             }
         }
+
+        if (is_there_req) {
+            const request_msg_bounds = C.Rectangle{
+                .x = GUI.WIDTH * 3 / 4,
+                .y = sidebar_rect.y,
+                .width = GUI.WIDTH / 4,
+                .height = sidebar_rect.height,
+            };
+
+            try draw_message_request(request_msg_bounds, &cursor);
+
+            const validated_requests_msg_bounds = C.Rectangle{
+                .x = request_msg_bounds.x,
+                .y = request_msg_bounds.y + request_msg_bounds.height,
+                .width = request_msg_bounds.width,
+                .height = request_msg_bounds.height,
+            };
+
+            try draw_validated_message_request_avancement(validated_requests_msg_bounds);
+        }
     }
 }
 
@@ -148,3 +185,120 @@ pub fn get_symmetric_key(public_key: std.crypto.ecc.Curve25519, priv_key: [32]u8
 }
 
 const allocator = std.heap.page_allocator;
+
+fn draw_message_request(bounds: C.Rectangle, cursor: *c_int) !void {
+    var iter = request.unvalidated_receive_requests.iterator();
+    const entry = iter.next() orelse return;
+
+    const msg_id = entry.key_ptr.*;
+    const value = entry.value_ptr.*;
+
+    const author_id = std.fmt.bytesToHex(value.target_id, .lower);
+
+    const message_req_msg = switch (value.data) {
+        .raw_message => |msg| try std.fmt.allocPrint(allocator, "Message request of size {d}o from {s}", .{ msg.len, author_id }),
+        .file => |f| try std.fmt.allocPrint(allocator, "File request of size {d}o from {s} and name {s}", .{ value.total_size, author_id, f.filename[0..f.filename_len] }),
+    };
+    defer allocator.free(message_req_msg);
+
+    const txt_bounds = C.Rectangle{
+        .x = bounds.x,
+        .y = bounds.y,
+        .width = bounds.width,
+        .height = bounds.height / 2,
+    };
+
+    Font.drawText(message_req_msg, txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
+
+    const side = @min(bounds.height / 2, bounds.width / 5);
+
+    const accept_rect = C.Rectangle{
+        .x = bounds.x,
+        .y = txt_bounds.y + txt_bounds.height,
+        .width = side,
+        .height = side,
+    };
+
+    C.DrawRectangleRec(accept_rect, C.GREEN);
+
+    if (C.CheckCollisionPointRec(C.GetMousePosition(), accept_rect)) {
+        cursor.* = C.MOUSE_CURSOR_POINTING_HAND;
+
+        if (C.IsMouseButtonPressed(C.MOUSE_BUTTON_LEFT)) {
+            try listen.send_accept_or_decline(msg_id, value.symmetric_key, value.target_id, true);
+        }
+    }
+
+    const refuse_rect = C.Rectangle{
+        .x = accept_rect.x + side * 2,
+        .y = accept_rect.y,
+        .width = side,
+        .height = side,
+    };
+
+    C.DrawRectangleRec(refuse_rect, C.RED);
+
+    if (C.CheckCollisionPointRec(C.GetMousePosition(), refuse_rect)) {
+        cursor.* = C.MOUSE_CURSOR_POINTING_HAND;
+
+        if (C.IsMouseButtonPressed(C.MOUSE_BUTTON_LEFT)) {
+            try listen.send_accept_or_decline(msg_id, value.symmetric_key, value.target_id, false);
+        }
+    }
+}
+
+fn draw_validated_message_request_avancement(bounds: C.Rectangle) !void {
+    var iter = request.receive_requests.iterator();
+    const entry = iter.next() orelse return;
+
+    const value = entry.value_ptr.*;
+
+    const author_id = std.fmt.bytesToHex(value.target_id, .lower);
+
+    const message_req_msg = switch (value.data) {
+        .raw_message => |msg| try std.fmt.allocPrint(allocator, "Message of size {d}o from {s} :", .{ msg.len, author_id }),
+        .file => |f| try std.fmt.allocPrint(allocator, "File `{s}` of size {d}o from {s} :", .{ f.filename[0..f.filename_len], (try f.file.metadata()).size(), author_id }),
+    };
+
+    var txt_bounds = C.Rectangle{
+        .x = bounds.x,
+        .y = bounds.y,
+        .width = bounds.width,
+        .height = bounds.height / 3,
+    };
+
+    Font.drawText(message_req_msg, txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
+
+    const done = @min(@as(u64, value.index) * @import("client/api/constants.zig").PAYLOAD_AND_PADDING_SIZE, value.total_size);
+
+    const avancement: f32 = @as(f32, @floatFromInt(done)) / @as(f32, @floatFromInt(value.total_size));
+
+    const avancement_text = try std.fmt.allocPrint(allocator, "{d:.2}%", .{avancement * 100});
+    defer allocator.free(avancement_text);
+
+    txt_bounds.y += txt_bounds.height;
+
+    Font.drawText(avancement_text, txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
+
+    txt_bounds.y += txt_bounds.height + 10;
+    txt_bounds.x -= 10;
+    txt_bounds.height -= 10;
+    txt_bounds.width -= 10;
+
+    //Draw the rect lines
+    {
+        C.DrawLineV(.{ .x = txt_bounds.x, .y = txt_bounds.y }, .{ .x = txt_bounds.x + txt_bounds.width, .y = txt_bounds.y }, C.BLUE);
+        C.DrawLineV(.{ .x = txt_bounds.x, .y = txt_bounds.y + txt_bounds.height }, .{ .x = txt_bounds.x + txt_bounds.width, .y = txt_bounds.y + txt_bounds.height }, C.BLUE);
+        C.DrawLineV(.{ .x = txt_bounds.x, .y = txt_bounds.y }, .{ .x = txt_bounds.x, .y = txt_bounds.y + txt_bounds.height }, C.BLUE);
+        C.DrawLineV(.{ .x = txt_bounds.x + txt_bounds.width, .y = txt_bounds.y }, .{ .x = txt_bounds.x + txt_bounds.width, .y = txt_bounds.y + txt_bounds.height }, C.BLUE);
+    }
+
+    const loading_filling_rect = C.Rectangle{
+        .x = txt_bounds.x + 2,
+        .y = txt_bounds.y + 2,
+        .width = (txt_bounds.width - 2) * avancement,
+        .height = txt_bounds.height - 2,
+    };
+
+    C.DrawRectangleRec(loading_filling_rect, C.BLUE);
+}

@@ -23,6 +23,7 @@ This chat is E2EE.
     - [ ] Perhaps even display small videos/gifs directly in the app ?
     - [ ] Speed up file transfers by using "seek" and more multi-threading ?
     - [ ] Improve the UI, which is for now very unstable (e.g. texts being cut by the end of the window)
+    - [ ] Scroll feature ?
 - [ ] E2EE files decrypt script
     - [x] Basic file decryption
     - [x] Put the decrypted files in the TMP directory

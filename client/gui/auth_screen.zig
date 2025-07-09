@@ -17,16 +17,23 @@ pub fn handle_auth(reader: std.io.AnyReader) !std.crypto.dh.X25519.KeyPair {
 
         C.ClearBackground(C.BLACK);
 
-        GUI.WIDTH = @intCast(C.GetScreenWidth());
-        GUI.HEIGHT = @intCast(C.GetScreenHeight());
+        GUI.WIDTH = @floatFromInt(C.GetScreenWidth());
+        GUI.HEIGHT = @floatFromInt(C.GetScreenHeight());
 
         if (passphrase.len >= 32) {
-            if (C.IsKeyPressed(C.KEY_ENTER) or C.IsKeyPressedRepeat(C.KEY_ENTER)) {
+            if (C.IsKeyPressed(C.KEY_ENTER)) {
                 try auth(&keypair, passphrase, reader);
             }
         }
 
-        try draw_auth_screen(&passphrase, &keypair, reader);
+        const bounds = C.Rectangle{
+            .x = 0,
+            .y = 0,
+            .width = GUI.WIDTH,
+            .height = GUI.HEIGHT,
+        };
+
+        try draw_auth_screen(&passphrase, &keypair, reader, bounds);
     }
 
     if (C.WindowShouldClose()) std.process.exit(0);
@@ -34,20 +41,21 @@ pub fn handle_auth(reader: std.io.AnyReader) !std.crypto.dh.X25519.KeyPair {
     return keypair.?;
 }
 
-fn draw_auth_screen(passphrase: *[:0]c_int, keypair: *?std.crypto.dh.X25519.KeyPair, reader: std.io.AnyReader) !void {
-    const x_center = @divTrunc(GUI.WIDTH, 2);
+fn draw_auth_screen(passphrase: *[:0]c_int, keypair: *?std.crypto.dh.X25519.KeyPair, reader: std.io.AnyReader, bounds: C.Rectangle) !void {
+    var txt_input_bounds = C.Rectangle{
+        .x = bounds.x,
+        .y = bounds.y + bounds.height * 2 / 6,
+        .width = bounds.width,
+        .height = bounds.height / 6,
+    };
 
-    try txt_input.draw_text_input(x_center, @divTrunc(GUI.HEIGHT, 3), .{ .UTF8 = @ptrCast(passphrase) }, GUI.FONT_SIZE, .Center);
+    try txt_input.draw_text_input(txt_input_bounds, .{ .UTF8 = @ptrCast(passphrase) }, GUI.FONT_SIZE, .Center, .Center);
+
+    txt_input_bounds.y += txt_input_bounds.height;
 
     const auth_button_text = "Authenticate";
-    const auth_button_text_length = Font.measureText(auth_button_text, GUI.FONT_SIZE);
 
-    const auth_button = C.Rectangle{
-        .x = @floatFromInt(x_center - @divTrunc(auth_button_text_length, 2) - GUI.button_padding),
-        .y = @floatFromInt(@divTrunc(GUI.HEIGHT, 3) + GUI.FONT_SIZE + 20),
-        .width = @floatFromInt(auth_button_text_length + GUI.button_padding * 2),
-        .height = GUI.FONT_SIZE + GUI.button_padding * 2,
-    };
+    const auth_button = Font.getRealTextRect(txt_input_bounds, GUI.button_padding, GUI.button_padding, GUI.FONT_SIZE, .{ .Bytes = auth_button_text }, .Center, .Center);
 
     var button_color = C.BLUE;
 
@@ -66,7 +74,7 @@ fn draw_auth_screen(passphrase: *[:0]c_int, keypair: *?std.crypto.dh.X25519.KeyP
     }
 
     C.DrawRectangleRec(auth_button, button_color);
-    Font.drawText(auth_button_text, @intFromFloat(auth_button.x + GUI.button_padding), @intFromFloat(auth_button.y + GUI.button_padding), GUI.FONT_SIZE, C.WHITE);
+    Font.drawText(auth_button_text, auth_button, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
 }
 
 fn auth(keypair: *?std.crypto.dh.X25519.KeyPair, passphrase: [:0]c_int, reader: std.io.AnyReader) !void {

@@ -3,19 +3,16 @@ const GUI = @import("../gui.zig");
 const std = @import("std");
 const Font = @import("font.zig");
 
-const allocator = std.heap.page_allocator;
+const Alignment = Font.Alignment;
 
-pub const Alignment = enum(u8) {
-    Center,
-    Left,
-};
+const allocator = std.heap.page_allocator;
 
 pub const TxtKind = union(enum(u8)) {
     ASCII: *[]u8,
     UTF8: *[]c_int,
 };
 
-pub fn draw_text_input_array(comptime n: usize, align_x: c_int, y: c_int, txt: *[n:0]u8, index: *usize, alignment: Alignment) void {
+pub fn draw_text_input_array(comptime n: usize, bounds: C.Rectangle, txt: *[n:0]u8, index: *usize, h_align: Alignment, v_align: Alignment, max_font_size: c_int) void {
     if (C.IsKeyPressed(C.KEY_BACKSPACE) or C.IsKeyPressedRepeat(C.KEY_BACKSPACE)) blk: {
         if (index.* == 0) break :blk;
         index.* -= 1;
@@ -35,32 +32,16 @@ pub fn draw_text_input_array(comptime n: usize, align_x: c_int, y: c_int, txt: *
         else => |c| std.log.err("Unsupported character {u}", .{@as(u21, @intCast(c))}),
     }
 
-    var txt_mut = txt[0..index.*];
-
-    draw_text_input_no_events(align_x, y, .{ .ASCII = &txt_mut }, GUI.FONT_SIZE, alignment);
+    Font.drawText(txt, bounds, max_font_size, C.WHITE, h_align, v_align);
 }
 
-pub fn draw_text_input(align_x: c_int, y: c_int, txt: TxtKind, font_size: c_int, alignment: Alignment) !void {
+pub fn draw_text_input(bounds: C.Rectangle, txt: TxtKind, max_font_size: c_int, h_align: Alignment, v_align: Alignment) !void {
     try handle_potential_text_growth(txt);
     try handle_potential_text_reduction(txt);
 
-    draw_text_input_no_events(align_x, y, txt, font_size, alignment);
-}
-
-pub fn draw_text_input_no_events(align_x: c_int, y: c_int, txt: TxtKind, font_size: c_int, alignment: Alignment) void {
-    const txt_length = switch (txt) {
-        .ASCII => |txt_ptr| Font.measureText(txt_ptr.*, font_size),
-        .UTF8 => |txt_ptr| Font.measureCodepoints(txt_ptr.*, font_size),
-    };
-
-    const x1 = switch (alignment) {
-        .Center => align_x - @divTrunc(txt_length, 2),
-        .Left => align_x,
-    };
-
     switch (txt) {
-        .ASCII => |txt_ptr| Font.drawText(txt_ptr.*, x1, y, font_size, C.WHITE),
-        .UTF8 => |txt_ptr| Font.drawCodepoints(txt_ptr.*, x1, y, font_size, C.WHITE),
+        .ASCII => |msg| Font.drawText(msg.*, bounds, max_font_size, C.WHITE, h_align, v_align),
+        .UTF8 => |msg| Font.drawCodepoints(msg.*, bounds, max_font_size, C.WHITE, h_align, v_align),
     }
 }
 

@@ -14,12 +14,21 @@ pub fn connect_to_server() !std.net.Stream {
         C.BeginDrawing();
         defer C.EndDrawing();
 
-        GUI.WIDTH = @intCast(C.GetScreenWidth());
-        GUI.HEIGHT = @intCast(C.GetScreenHeight());
+        C.ClearBackground(C.BLACK);
 
-        try draw_connect_to_server_screen(&server_addr, &server);
+        GUI.WIDTH = @floatFromInt(C.GetScreenWidth());
+        GUI.HEIGHT = @floatFromInt(C.GetScreenHeight());
 
-        if (C.IsKeyPressed(C.KEY_ENTER) or C.IsKeyPressedRepeat(C.KEY_ENTER)) {
+        const bounds = C.Rectangle{
+            .x = 0,
+            .y = 0,
+            .width = GUI.WIDTH,
+            .height = GUI.HEIGHT,
+        };
+
+        try draw_connect_to_server_screen(&server_addr, &server, bounds);
+
+        if (C.IsKeyPressed(C.KEY_ENTER)) {
             try connect_to_server_button_clicked(&server_addr, &server);
         }
     }
@@ -29,22 +38,22 @@ pub fn connect_to_server() !std.net.Stream {
     return server.?;
 }
 
-fn draw_connect_to_server_screen(server_addr: *[]u8, server: *?std.net.Stream) !void {
-    const ConnectButtonText = "Connect";
-    const connect_button_length = Font.measureText(ConnectButtonText, GUI.FONT_SIZE);
-
-    C.ClearBackground(C.BLACK);
-
-    const x1_center = @divTrunc(GUI.WIDTH, 2);
-    const y1 = @divTrunc(GUI.HEIGHT, 3);
-    try txt_input.draw_text_input(@intCast(x1_center), @intCast(y1), .{ .ASCII = server_addr }, GUI.FONT_SIZE, .Center);
-
-    const connect_button = C.Rectangle{
-        .x = @floatFromInt(x1_center - @divTrunc(connect_button_length, 2) - GUI.button_padding),
-        .y = @floatFromInt(y1 + GUI.FONT_SIZE + 20),
-        .width = @floatFromInt(connect_button_length + GUI.button_padding * 2),
-        .height = @floatFromInt(GUI.FONT_SIZE + GUI.button_padding * 2),
+fn draw_connect_to_server_screen(server_addr: *[]u8, server: *?std.net.Stream, bounds: C.Rectangle) !void {
+    var txt_input_bounds = C.Rectangle{
+        .x = bounds.x,
+        .y = bounds.y + bounds.height * 2 / 6,
+        .width = bounds.width,
+        .height = bounds.height * 2 / 6,
     };
+
+    const ConnectButtonText = "Connect";
+
+    try txt_input.draw_text_input(txt_input_bounds, .{ .ASCII = server_addr }, GUI.FONT_SIZE, .Center, .Center);
+
+    txt_input_bounds.y += txt_input_bounds.height;
+    txt_input_bounds.height = bounds.height / 6;
+
+    const connect_button = Font.getRealTextRect(txt_input_bounds, GUI.button_padding, GUI.button_padding, GUI.FONT_SIZE, .{ .Bytes = ConnectButtonText }, .Center, .Center);
 
     var button_color = C.BLUE;
 
@@ -58,12 +67,7 @@ fn draw_connect_to_server_screen(server_addr: *[]u8, server: *?std.net.Stream) !
         }
     }
 
-    C.DrawRectangleRec(connect_button, button_color);
-
-    const button_text_x1 = x1_center - @divTrunc(connect_button_length, 2);
-    const button_text_y1 = connect_button.y + GUI.button_padding;
-
-    Font.drawText(ConnectButtonText, @intCast(button_text_x1), @intFromFloat(button_text_y1), GUI.FONT_SIZE, C.WHITE);
+    Font.drawDefaultButtonTextRect(txt_input_bounds, C.WHITE, C.BLUE, .{ .Bytes = ConnectButtonText });
 }
 
 const DEFAULT_ADDR = std.net.Address.initIp4(.{ 127, 0, 0, 1 }, 8080);

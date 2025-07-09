@@ -14,162 +14,42 @@ const SPACE_BETWEEN = 15;
 
 const allocator = std.heap.page_allocator;
 
-fn draw_message_request(bounds: C.Rectangle, cursor: *c_int) !void {
-    var iter = request.unvalidated_receive_requests.iterator();
-    const entry = iter.next() orelse return;
-
-    const msg_id = entry.key_ptr.*;
-    const value = entry.value_ptr.*;
-
-    const author_id = std.fmt.bytesToHex(value.target_id, .lower);
-
-    const message_req_msg = switch (value.data) {
-        .raw_message => |msg| try std.fmt.allocPrint(allocator, "Message request of size {d}o from {s}", .{ msg.len, author_id }),
-        .file => |f| try std.fmt.allocPrint(allocator, "File request of size {d}o from {s} and name {s}", .{ value.total_size, author_id, f.filename[0..f.filename_len] }),
+pub fn draw_choose_discussion_sidebar(bounds: C.Rectangle, dm_state: *Client.DMState, target_id: *?[32]u8) !void {
+    const manual_button_rect = C.Rectangle{
+        .x = bounds.x + bounds.width - 20,
+        .y = 0,
+        .width = 20,
+        .height = 20,
     };
+    draw_manual_button(dm_state, manual_button_rect);
 
-    Font.drawText(message_req_msg, @intFromFloat(bounds.x), @intFromFloat(bounds.y), GUI.FONT_SIZE, C.WHITE);
-
-    const side = @min(bounds.height - GUI.FONT_SIZE, bounds.width / 5);
-
-    const accept_rect = C.Rectangle{
+    var inner_bounds = C.Rectangle{
         .x = bounds.x,
-        .y = bounds.y + GUI.FONT_SIZE,
-        .width = side,
-        .height = side,
-    };
-
-    C.DrawRectangleRec(accept_rect, C.GREEN);
-
-    if (C.CheckCollisionPointRec(C.GetMousePosition(), accept_rect)) {
-        cursor.* = C.MOUSE_CURSOR_POINTING_HAND;
-
-        if (C.IsMouseButtonPressed(C.MOUSE_BUTTON_LEFT)) {
-            try listen.send_accept_or_decline(msg_id, value.symmetric_key, value.target_id, true);
-        }
-    }
-
-    const refuse_rect = C.Rectangle{
-        .x = accept_rect.x + side * 2,
-        .y = accept_rect.y,
-        .width = side,
-        .height = side,
-    };
-
-    C.DrawRectangleRec(refuse_rect, C.RED);
-
-    if (C.CheckCollisionPointRec(C.GetMousePosition(), refuse_rect)) {
-        cursor.* = C.MOUSE_CURSOR_POINTING_HAND;
-
-        if (C.IsMouseButtonPressed(C.MOUSE_BUTTON_LEFT)) {
-            try listen.send_accept_or_decline(msg_id, value.symmetric_key, value.target_id, false);
-        }
-    }
-}
-
-fn draw_validated_message_request_avancement(bounds: C.Rectangle) !void {
-    var iter = request.receive_requests.iterator();
-    const entry = iter.next() orelse return;
-
-    const value = entry.value_ptr.*;
-
-    const author_id = std.fmt.bytesToHex(value.target_id, .lower);
-
-    const message_req_msg = switch (value.data) {
-        .raw_message => |msg| try std.fmt.allocPrint(allocator, "Message of size {d}o from {s} :", .{ msg.len, author_id }),
-        .file => |f| try std.fmt.allocPrint(allocator, "File `{s}` of size {d}o from {s} :", .{ f.filename[0..f.filename_len], (try f.file.metadata()).size(), author_id }),
-    };
-
-    Font.drawText(message_req_msg, @intFromFloat(bounds.x), @intFromFloat(bounds.y), GUI.FONT_SIZE, C.WHITE);
-
-    const done = @min(@as(u64, value.index) * @import("../api/constants.zig").PAYLOAD_AND_PADDING_SIZE, value.total_size);
-
-    const avancement: f32 = @as(f32, @floatFromInt(done)) / @as(f32, @floatFromInt(value.total_size));
-
-    const avancement_text = try std.fmt.allocPrint(allocator, "{d:.2}%", .{avancement * 100});
-    defer allocator.free(avancement_text);
-
-    Font.drawText(avancement_text, @intFromFloat(bounds.x), @as(c_int, @intFromFloat(bounds.y)) + GUI.FONT_SIZE, GUI.FONT_SIZE / 2, C.WHITE);
-
-    const loading_rect = C.Rectangle{
-        .x = bounds.x,
-        .y = bounds.y + GUI.FONT_SIZE * 2,
+        .y = manual_button_rect.y + manual_button_rect.height,
         .width = bounds.width,
-        .height = GUI.FONT_SIZE * 2,
+        .height = bounds.height - (manual_button_rect.y + manual_button_rect.height),
     };
-
-    //Draw the rect lines
-    {
-        C.DrawLineV(.{ .x = loading_rect.x, .y = loading_rect.y }, .{ .x = loading_rect.x + loading_rect.width, .y = loading_rect.y }, C.BLUE);
-        C.DrawLineV(.{ .x = loading_rect.x, .y = loading_rect.y + loading_rect.height }, .{ .x = loading_rect.x + loading_rect.width, .y = loading_rect.y + loading_rect.height }, C.BLUE);
-        C.DrawLineV(.{ .x = loading_rect.x, .y = loading_rect.y }, .{ .x = loading_rect.x, .y = loading_rect.y + loading_rect.height }, C.BLUE);
-        C.DrawLineV(.{ .x = loading_rect.x + loading_rect.width, .y = loading_rect.y }, .{ .x = loading_rect.x + loading_rect.width, .y = loading_rect.y + loading_rect.height }, C.BLUE);
-    }
-
-    const loading_filling_rect = C.Rectangle{
-        .x = loading_rect.x + 2,
-        .y = loading_rect.y + 2,
-        .width = (loading_rect.width - 2) * avancement,
-        .height = loading_rect.height - 2,
-    };
-
-    C.DrawRectangleRec(loading_filling_rect, C.BLUE);
-}
-
-pub fn draw_choose_discussion_sidebar(my_id: [32]u8, target_id: *?[32]u8, cursor: *c_int, rect: C.Rectangle, dm_state: *Client.DMState) !void {
-    var y_offset: f32 = 0;
-
-    try @import("id_top_left_display.zig").draw_id_top_left_display(my_id, cursor);
-    y_offset += GUI.FONT_SIZE + 10;
-
-    {
-        const manual_button_rect = C.Rectangle{
-            .x = rect.x + rect.width - 20,
-            .y = rect.y + y_offset,
-            .width = 20,
-            .height = 20,
-        };
-        draw_manual_button(dm_state, manual_button_rect);
-
-        y_offset += manual_button_rect.height + 5;
-    }
 
     switch (dm_state.*) {
-        .Manual => |*manual_data| try ManualScreen.draw_manual_screen(&manual_data.manual_target_id, &manual_data.manual_target_id_index, target_id, rect, dm_state),
+        .Manual => |*manual_data| try ManualScreen.draw_manual_screen(&manual_data.manual_target_id, &manual_data.manual_target_id_index, target_id, inner_bounds, dm_state),
         .NotManual => {
             const messages_lock = &messages.messages;
 
             var iterator = messages_lock.iterator();
 
-            while (iterator.next()) |discussion| {
-                try display_target_id(discussion.key_ptr.*, discussion.value_ptr.items.len, &y_offset, target_id, rect);
+            while (iterator.next()) |discussion| : ({
+                inner_bounds.y += TARGET_ID_HEIGHT;
+                inner_bounds.height -= TARGET_ID_HEIGHT;
+            }) {
+                if (inner_bounds.height < 0) break;
+                try display_target_id(discussion.key_ptr.*, discussion.value_ptr.items.len, target_id, inner_bounds);
             }
         },
     }
-
-    const request_msg_bounds = C.Rectangle{
-        .x = @floatFromInt(GUI.WIDTH - 150),
-        .y = GUI.FONT_SIZE,
-        .width = 125,
-        .height = 100,
-    };
-
-    try draw_message_request(request_msg_bounds, cursor);
-
-    const validated_requests_msg_bounds = C.Rectangle{
-        .x = request_msg_bounds.x,
-        .y = request_msg_bounds.y + request_msg_bounds.height * 1.5,
-        .width = request_msg_bounds.width,
-        .height = request_msg_bounds.height,
-    };
-
-    try draw_validated_message_request_avancement(validated_requests_msg_bounds);
 }
 
 const ManualScreen = struct {
     pub fn draw_manual_screen(manual_target_id: *[64:0]u8, manual_target_id_index: *usize, target_id: *?[32]u8, bounds: C.Rectangle, dm_state: *Client.DMState) !void {
-        const x_center: c_int = @intFromFloat(bounds.x + bounds.width / 2);
-
         if (manual_target_id_index.* == manual_target_id.len) {
             if (C.IsKeyPressed(C.KEY_ENTER)) {
                 try set_target_id(target_id, manual_target_id.*, dm_state);
@@ -179,34 +59,28 @@ const ManualScreen = struct {
 
         const txt = "Enter the target ID (hexadecimal) :";
 
-        const txt_length = Font.measureText(txt, GUI.FONT_SIZE * 2 / 3);
-
-        const y_center = bounds.y + bounds.height / 2;
-
-        Font.drawText(txt, x_center - @divTrunc(txt_length, 2), @intFromFloat(y_center - GUI.FONT_SIZE * 2), GUI.FONT_SIZE * 2 / 3, C.WHITE);
-
-        txt_input.draw_text_input_array(64, x_center, @intFromFloat(y_center - GUI.FONT_SIZE / 2), manual_target_id, manual_target_id_index, .Center);
-
-        try ManualScreen.draw_paste_target_id_button(manual_target_id, manual_target_id_index, target_id, dm_state);
-    }
-
-    fn draw_paste_target_id_button(manual_target_id: *[64:0]u8, manual_target_id_index: *usize, target_id: *?[32]u8, dm_state: *Client.DMState) !void {
-        const paste_txt = "Paste ID from clipboard";
-        const paste_txt_length = Font.measureText(paste_txt, GUI.FONT_SIZE * 2 / 3);
-
-        const x_center = @divTrunc(GUI.WIDTH, 2);
-        const y_center = @divTrunc(GUI.HEIGHT, 2);
-
-        const paste_txt_rect = C.Rectangle{
-            .x = @floatFromInt(x_center - @divTrunc(paste_txt_length, 2)),
-            .y = @floatFromInt(y_center + GUI.FONT_SIZE),
-            .width = @floatFromInt(paste_txt_length),
-            .height = @floatFromInt(GUI.FONT_SIZE * 2 / 3),
+        var txt_bounds = C.Rectangle{
+            .x = bounds.x,
+            .y = bounds.y * 2 / 6,
+            .width = bounds.width,
+            .height = bounds.y / 6,
         };
 
-        var paste_txt_button_rect = paste_txt_rect;
-        paste_txt_button_rect.x -= GUI.FONT_SIZE;
-        paste_txt_button_rect.width += GUI.FONT_SIZE * 2;
+        Font.drawText(txt, txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
+
+        txt_bounds.y += bounds.y / 6;
+
+        txt_input.draw_text_input_array(64, txt_bounds, manual_target_id, manual_target_id_index, .Center, .Center, GUI.FONT_SIZE);
+
+        txt_bounds.y += bounds.y / 6;
+
+        try ManualScreen.draw_paste_target_id_button(manual_target_id, manual_target_id_index, target_id, dm_state, txt_bounds);
+    }
+
+    fn draw_paste_target_id_button(manual_target_id: *[64:0]u8, manual_target_id_index: *usize, target_id: *?[32]u8, dm_state: *Client.DMState, bounds: C.Rectangle) !void {
+        const paste_txt = "Paste ID from clipboard";
+
+        const paste_txt_rect = Font.getRealTextRect(bounds, GUI.button_padding, GUI.button_padding, GUI.FONT_SIZE, .{ .Bytes = paste_txt }, .Center, .Center);
 
         var paste_txt_rect_bg_color = C.BLACK;
 
@@ -232,14 +106,14 @@ const ManualScreen = struct {
             }
         }
 
-        C.DrawRectangleRec(paste_txt_button_rect, paste_txt_rect_bg_color);
+        C.DrawRectangleRec(paste_txt_rect, paste_txt_rect_bg_color);
 
-        Font.drawText(paste_txt, @intFromFloat(paste_txt_rect.x), @intFromFloat(paste_txt_rect.y), GUI.FONT_SIZE * 2 / 3, C.WHITE);
+        Font.drawText(paste_txt, bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
     }
 };
 
 fn draw_manual_button(dm_state: *Client.DMState, rect: C.Rectangle) void {
-    if (C.IsKeyPressed(C.KEY_ESCAPE) or C.IsKeyPressedRepeat(C.KEY_ESCAPE)) {
+    if (C.IsKeyPressed(C.KEY_ESCAPE)) {
         dm_state.* = .{ .NotManual = {} };
         return;
     }
@@ -280,17 +154,10 @@ fn set_target_id(target_id_ptr: *?[32]u8, target_id: [64]u8, dm_state: *Client.D
     dm_state.* = .{ .NotManual = {} };
 }
 
-fn display_target_id(id: [32]u8, messages_count: usize, y_offset: *f32, target_id: *?[32]u8, bounds: C.Rectangle) !void {
-    const rect = C.Rectangle{
-        .x = bounds.x,
-        .y = y_offset.*,
-        .width = bounds.width,
-        .height = TARGET_ID_HEIGHT,
-    };
-
+fn display_target_id(id: [32]u8, messages_count: usize, target_id: *?[32]u8, bounds: C.Rectangle) !void {
     var rect_color = C.BLACK;
 
-    if (C.CheckCollisionPointRec(C.GetMousePosition(), rect)) {
+    if (C.CheckCollisionPointRec(C.GetMousePosition(), bounds)) {
         rect_color = C.DARKGRAY;
 
         if (C.IsMouseButtonDown(C.MOUSE_LEFT_BUTTON)) {
@@ -309,14 +176,22 @@ fn display_target_id(id: [32]u8, messages_count: usize, y_offset: *f32, target_i
         }
     }
 
-    C.DrawRectangleRec(rect, rect_color);
-    const id_hex = std.fmt.bytesToHex(id, .lower);
-    Font.drawText(&id_hex, @intFromFloat(rect.x + GUI.button_padding), @intFromFloat(y_offset.* + GUI.button_padding), GUI.FONT_SIZE, C.WHITE);
+    C.DrawRectangleRec(bounds, rect_color);
 
-    const number_of_messages_text: [:0]u8 = try std.fmt.allocPrintZ(allocator, "{d} message(s)", .{messages_count});
+    const id_hex = std.fmt.bytesToHex(id, .lower);
+
+    var txt_bounds = C.Rectangle{
+        .x = bounds.x,
+        .y = bounds.y,
+        .width = bounds.width,
+        .height = bounds.height / 2,
+    };
+    Font.drawTextRect(txt_bounds, GUI.button_padding, GUI.button_padding, C.WHITE, GUI.FONT_SIZE, rect_color, .{ .Bytes = &id_hex }, .Center, .Center);
+
+    const number_of_messages_text = try std.fmt.allocPrint(allocator, "{d} message(s)", .{messages_count});
     defer allocator.free(number_of_messages_text);
 
-    Font.drawText(number_of_messages_text, @intFromFloat(rect.x + GUI.button_padding), @intFromFloat(y_offset.* + GUI.button_padding + GUI.FONT_SIZE), GUI.FONT_SIZE, C.WHITE);
+    txt_bounds.x += bounds.height;
 
-    y_offset.* += TARGET_ID_HEIGHT + SPACE_BETWEEN;
+    Font.drawTextRect(txt_bounds, GUI.button_padding, GUI.button_padding, C.WHITE, GUI.FONT_SIZE, rect_color, .{ .Bytes = number_of_messages_text }, .Center, .Center);
 }

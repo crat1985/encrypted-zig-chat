@@ -7,8 +7,8 @@ pub const handle_new_message = messages.handle_new_message;
 pub const draw_choose_discussion_sidebar = @import("gui/dm_chooser_screen.zig").draw_choose_discussion_sidebar;
 pub const draw_dm_screen = @import("gui/dm_screen.zig").draw_dm_screen;
 
-pub var WIDTH: c_int = 720;
-pub var HEIGHT: c_int = 480;
+pub var WIDTH: f32 = 720;
+pub var HEIGHT: f32 = 480;
 
 const allocator = std.heap.page_allocator;
 
@@ -20,7 +20,7 @@ pub fn init() void {
 
     // C.SetExitKey(C.KEY_NULL);
 
-    C.InitWindow(@intCast(WIDTH), @intCast(HEIGHT), "Encrypted Zig chat");
+    C.InitWindow(@intFromFloat(WIDTH), @intFromFloat(HEIGHT), "Encrypted Zig chat");
 
     C.SetTargetFPS(60);
 
