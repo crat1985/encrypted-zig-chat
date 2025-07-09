@@ -2,13 +2,56 @@ const std = @import("std");
 
 const allocator = std.heap.page_allocator;
 
+///To make sure another program doesn't use the same dir name
+const ENCRYPTED_CHAT_DIR_NAME = "zig_encrypted_chat_797898968";
+
 const OUTPUT_FILE_DEFAULT_PREFIX = "decrypted_";
 
 const utils = @import("client/api/utils.zig");
 const constants = @import("client/api/constants.zig");
 
+fn get_tmp_dir() ![]u8 {
+    const prefix = switch (@import("builtin").target.os.tag) {
+        .windows => std.process.getEnvVarOwned(allocator, "TEMP") catch try allocator.dupe(u8, "C:\\Windows\\Temp"),
+        .macos, .linux => std.process.getEnvVarOwned(allocator, "TMPDIR") catch try allocator.dupe(u8, "/tmp"),
+        else => @compileError("Unsupported OS"),
+    };
+    // defer allocator.free(prefix);
+
+    // const tmp_dir = try std.fs.openDirAbsolute(prefix, .{});
+
+    // //Create the app tmp directory
+    // _ = try create_dir_if_does_not_exist(tmp_dir, ENCRYPTED_CHAT_DIR_NAME);
+
+    // return try std.fs.path.join(allocator, &.{ prefix, ENCRYPTED_CHAT_DIR_NAME, &user_id });
+
+    return prefix;
+}
+
+fn create_dir_if_does_not_exist(path: []const u8) !std.fs.Dir {
+    std.fs.makeDirAbsolute(path) catch |err| {
+        if (err != error.PathAlreadyExists) {
+            return err;
+        }
+    };
+
+    return try std.fs.openDirAbsolute(path, .{});
+}
+
+fn create_rel_dir_if_does_not_exist(dir: std.fs.Dir, file_name: []const u8) !std.fs.Dir {
+    dir.makeDir(file_name) catch |err| {
+        if (err != error.PathAlreadyExists) {
+            return err;
+        }
+    };
+
+    return try dir.openDir(file_name, .{});
+}
+
 pub fn main() !void {
     const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+
     const program_name = args[0];
 
     if (args.len == 1) {
@@ -28,17 +71,21 @@ pub fn main() !void {
         break :blk try @import("client/crypto.zig").derive(passphrase);
     };
 
+    var user_id_hex: [64]u8 = undefined;
+
     const user_id: [32]u8 = while (true) {
         try stdout.writeAll("Enter the user ID : ");
 
-        const user_id_hex: []u8 = try stdin.readUntilDelimiterAlloc(allocator, '\n', 65);
-        defer allocator.free(user_id_hex);
+        const user_id_hex_slice: []u8 = try stdin.readUntilDelimiterAlloc(allocator, '\n', 65);
+        defer allocator.free(user_id_hex_slice);
 
         if (user_id_hex.len != 64) continue;
 
+        @memcpy(&user_id_hex, user_id_hex_slice);
+
         var user_id: [32]u8 = undefined;
 
-        _ = try std.fmt.hexToBytes(&user_id, user_id_hex);
+        _ = try std.fmt.hexToBytes(&user_id, &user_id_hex);
 
         break user_id;
     };
@@ -51,22 +98,38 @@ pub fn main() !void {
 
     const file_name = args[1];
 
-    if (args.len == 2) {
-        const outfile = try std.fmt.allocPrint(allocator, OUTPUT_FILE_DEFAULT_PREFIX ++ "{s}", .{file_name});
-        defer allocator.free(outfile);
+    const APP_TMP_PATH = try get_tmp_dir();
+    defer allocator.free(APP_TMP_PATH);
 
-        try decrypt_file(file_name, symmetric_key, outfile);
-        return;
-    }
+    var APP_TMP = try create_dir_if_does_not_exist(APP_TMP_PATH);
+    defer APP_TMP.close();
 
-    const out_file = args[2];
+    var out_dir = try create_rel_dir_if_does_not_exist(APP_TMP, &user_id_hex);
+    defer out_dir.close();
 
-    if (args.len == 3) {
-        try decrypt_file(file_name, symmetric_key, out_file);
-        return;
-    }
+    const outfile_name: []u8 =
+        if (args.len == 2) blk: {
+            const outfile_name = try std.fmt.allocPrint(allocator, OUTPUT_FILE_DEFAULT_PREFIX ++ "{s}", .{file_name});
 
-    std.debug.print("Too many arguments\n", .{});
+            break :blk outfile_name;
+        } else if (args.len == 3) try allocator.dupe(u8, args[2]) else {
+            std.log.err("Too many arguments", .{});
+            std.process.exit(0);
+        };
+    defer allocator.free(outfile_name);
+
+    const full_path = try std.fs.path.join(allocator, &.{ APP_TMP_PATH, &user_id_hex, outfile_name });
+
+    std.log.info("Creating output file {s}...", .{full_path});
+
+    const outfile = try out_dir.createFile(outfile_name, .{});
+    defer outfile.close();
+
+    std.log.info("Created output file {s} successfully !", .{full_path});
+
+    try decrypt_file(file_name, symmetric_key, outfile);
+
+    std.log.info("Generated decrypted file {s} successfully !", .{full_path});
 }
 
 fn print_help(program_name: []const u8) void {
@@ -75,14 +138,11 @@ fn print_help(program_name: []const u8) void {
 
 const ENCRYPTED_BLOCK_SIZE = constants.PAYLOAD_AND_PADDING_SIZE + utils.CHACHA_DATA_LENGTH;
 
-fn decrypt_file(name: []const u8, symmetric_key: [32]u8, out_file: []const u8) !void {
+fn decrypt_file(name: []const u8, symmetric_key: [32]u8, out_file: std.fs.File) !void {
     const input_file = try std.fs.cwd().openFile(name, .{});
     const encrypted_file_size = (try input_file.metadata()).size();
 
     const reader = input_file.reader();
-
-    const output_file = try std.fs.cwd().createFile(out_file, .{});
-    const writer = output_file.writer();
 
     const file_size_encrypted = try reader.readBytesNoEof(8 + utils.CHACHA_DATA_LENGTH);
 
@@ -96,11 +156,14 @@ fn decrypt_file(name: []const u8, symmetric_key: [32]u8, out_file: []const u8) !
         const block = try reader.readBytesNoEof(ENCRYPTED_BLOCK_SIZE);
         const decrypted = try utils.decrypt_chacha(ENCRYPTED_BLOCK_SIZE, &block, symmetric_key);
 
-        if (i + 1 == parts_count) {
-            const end = decrypted_file_size % ENCRYPTED_BLOCK_SIZE;
-            try writer.writeAll(decrypted[0..end]);
-        } else {
-            try writer.writeAll(&decrypted);
+        const end = if (i + 1 == parts_count) decrypted_file_size % ENCRYPTED_BLOCK_SIZE else decrypted.len;
+
+        try out_file.writeAll(decrypted[0..end]);
+
+        {
+            const total_decrypted: f32 = @floatFromInt(i * ENCRYPTED_BLOCK_SIZE + end);
+            const avancement = total_decrypted / @as(f32, @floatFromInt(decrypted_file_size)) * 100;
+            std.debug.print("Decrypted {d:.2}% of the file\n", .{avancement});
         }
     }
 }
