@@ -25,16 +25,16 @@ pub fn encrypt_chacha(comptime n: usize, source: *const [n]u8, symmetric_key: [3
     var encrypted: [n + CHACHA_DATA_LENGTH]u8 = undefined;
 
     const nonce = blk: {
-        var nonce: [12]u8 = undefined;
+        std.crypto.random.bytes(encrypted[0..ChaCha20Poly1305.nonce_length]);
 
-        std.crypto.random.bytes(&nonce);
-
-        break :blk nonce;
+        break :blk encrypted[0..ChaCha20Poly1305.nonce_length].*;
     };
 
     var tag: [ChaCha20Poly1305.tag_length]u8 = undefined;
 
     ChaCha20Poly1305.encrypt(encrypted[CHACHA_DATA_LENGTH..], &tag, source, &.{}, nonce, symmetric_key);
+
+    @memcpy(encrypted[ChaCha20Poly1305.nonce_length..CHACHA_DATA_LENGTH], &tag);
 
     return encrypted;
 }
@@ -46,7 +46,7 @@ pub fn decrypt_chacha(comptime n: usize, source: *const [n]u8, symmetric_key: [3
 
     const tag: [ChaCha20Poly1305.tag_length]u8 = source.*[ChaCha20Poly1305.nonce_length..CHACHA_DATA_LENGTH].*;
 
-    try ChaCha20Poly1305.decrypt(&decrypted, source, tag, &.{}, nonce, symmetric_key);
+    try ChaCha20Poly1305.decrypt(&decrypted, source[CHACHA_DATA_LENGTH..], tag, &.{}, nonce, symmetric_key);
 
     return decrypted;
 }
