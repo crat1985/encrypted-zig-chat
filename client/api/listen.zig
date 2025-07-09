@@ -9,7 +9,7 @@ const utils = @import("utils.zig");
 const constants = @import("constants.zig");
 const FULL_MESSAGE_SIZE = constants.FULL_MESSAGE_SIZE;
 const ACTION_DATA_SIZE = constants.ACTION_DATA_SIZE;
-const DECRYPTED_OUTPUT_DIR = constants.DECRYPTED_OUTPUT_DIR;
+const FILE_OUTPUT_DIR = constants.FILE_OUTPUT_DIR;
 const PAYLOAD_AND_PADDING_SIZE = constants.PAYLOAD_AND_PADDING_SIZE;
 
 const request = @import("request.zig");
@@ -194,7 +194,7 @@ fn handle_request(is_from_me: bool, is_from_me_to_me: bool, msg_id: u64, req_dat
     const receive_req_data: request.ReceiveRequestData = switch (req_data) {
         .file => |f| blk: {
             const cwd = std.fs.cwd();
-            var dir = try utils.mkdir_if_absent(cwd, DECRYPTED_OUTPUT_DIR);
+            var dir = try utils.mkdir_if_absent(cwd, FILE_OUTPUT_DIR);
             defer dir.close();
 
             var dm_id_dir = try utils.mkdir_if_absent(dir, &dm_id_hex);

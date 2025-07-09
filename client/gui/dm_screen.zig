@@ -134,7 +134,7 @@ fn draw_messages(dm: [32]u8, dm_hexz: [:0]u8, bounds: C.Rectangle, cursor: *c_in
                 cursor.* = C.MOUSE_CURSOR_POINTING_HAND;
 
                 if (C.IsMouseButtonPressed(C.MOUSE_BUTTON_LEFT)) {
-                    const relative_path = try std.fs.path.join(allocator, &.{ @import("../api/constants.zig").DECRYPTED_OUTPUT_DIR, discussion_message.content });
+                    const relative_path = try std.fs.path.join(allocator, &.{ @import("../api/constants.zig").FILE_OUTPUT_DIR, discussion_message.content });
                     defer allocator.free(relative_path);
 
                     //TODO open them somehow ?
