@@ -17,4 +17,4 @@ This chat is E2EE.
     - [x] Put each file in their DM directory
     - [x] E2EE the files
     - [ ] Patch Windows lags and "Not responding" issues
-- [x] E2EE files decrypt
+- [x] E2EE files decrypt script
