@@ -33,31 +33,13 @@ pub fn read_messages(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) 
 fn handle_message(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !void {
     const full_message_bytes = try reader.readBytesNoEof(FULL_MESSAGE_SIZE + 32);
 
-    // {
-    //     var hasher = std.hash.Wyhash.init(0);
-    //     hasher.update(full_message_bytes[32..]);
-    //     const hash = hasher.final();
-    //     std.debug.print("\n\nReceived hash = {d}\n\n\n", .{hash});
-    // }
-
     const full_message: ReceivedFullEncryptedMessage = std.mem.bytesAsValue(ReceivedFullEncryptedMessage, &full_message_bytes).*;
-
-    // {
-    //     const full_message_bytes_hex = std.fmt.bytesToHex(full_message_bytes[0 .. constants.FULL_MESSAGE_SIZE - constants.BLOCK_SIZE], .lower);
-
-    //     std.debug.print("From = {s}, UNECRYPTED DATA = {s}\n", .{
-    //         std.fmt.bytesToHex(full_message.from, .lower),
-    //         full_message_bytes_hex,
-    //     });
-    // }
 
     const encryption_pubkey = if (std.mem.eql(u8, &pubkey, &full_message.from)) full_message.data.target_id else full_message.from;
 
     const dm_id_hex = std.fmt.bytesToHex(encryption_pubkey, .lower);
 
     const other_pubkey = std.crypto.ecc.Curve25519.fromBytes(encryption_pubkey);
-
-    // std.debug.print("\n\n\nDecrypting message from {s} to {s}\n\n\n", .{ std.fmt.bytesToHex(full_message.from, .lower), std.fmt.bytesToHex(full_message.data.target_id, .lower) });
 
     const symmetric_key = try @import("../../client.zig").get_symmetric_key(other_pubkey, privkey);
 
@@ -90,13 +72,13 @@ fn handle_message(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !vo
             var is_file: bool = undefined;
 
             const total_size = blk: {
-                const req = receive_requests.get(msg_id).?;
+                const req = receive_requests.getPtr(msg_id).?;
                 switch (req.data) {
                     .file => is_file = true,
                     .raw_message => is_file = false,
                 }
 
-                // std.debug.print("\n\n\nSend data symmetric key = {s}\n\n\n", .{std.fmt.bytesToHex(req.symmetric_key, .lower)});
+                req.index += 1;
 
                 break :blk req.total_size;
             };
@@ -111,10 +93,6 @@ fn handle_message(privkey: [32]u8, pubkey: [32]u8, reader: std.io.AnyReader) !vo
                 payload_real_len = PAYLOAD_AND_PADDING_SIZE;
                 is_last = false;
             }
-
-            // std.debug.print("is_last = {}, total_size = {d}, payload_real_len = {d}\n", .{ is_last, total_size, payload_real_len });
-
-            // if (!is_file) std.debug.print("Received data : {s}\n", .{sd.payload_and_padding[0..payload_real_len]});
 
             {
                 const value =
@@ -244,6 +222,7 @@ fn handle_request(is_from_me: bool, is_from_me_to_me: bool, msg_id: u64, req_dat
         .symmetric_key = symmetric_key,
         .target_id = target_id,
         .total_size = total_size,
+        .index = 0,
     };
 
     // std.debug.print("ReceiveRequest symmetric key = {s}\n", .{std.fmt.bytesToHex(rr.symmetric_key, .lower)});
@@ -258,32 +237,12 @@ fn handle_request(is_from_me: bool, is_from_me_to_me: bool, msg_id: u64, req_dat
         if (entry.found_existing) @panic("no");
 
         entry.value_ptr.* = rr;
-
-        _ = try std.Thread.spawn(.{}, wait_for_accept_or_decline, .{ msg_id, symmetric_key, target_id });
     }
 }
 
-fn wait_for_accept_or_decline(msg_id: u64, symmetric_key: [32]u8, target_id: [32]u8) !void {
+pub fn send_accept_or_decline(msg_id: u64, symmetric_key: [32]u8, target_id: [32]u8, is_accept: bool) !void {
     var padding: [ACTION_DATA_SIZE]u8 = undefined;
     std.crypto.random.bytes(&padding);
-
-    // const stdout = std.io.getStdOut().writer();
-    // const stdin = std.io.getStdIn().reader();
-
-    // const is_accept: bool = while (true) {
-    //     try stdout.writeAll("Accept (y/n) ? ");
-    //     const res = try stdin.readByte();
-    //     _ = try stdin.readByte(); //skip \n
-    //     switch (res) {
-    //         'y' => break true,
-    //         'n' => break false,
-    //         else => {
-    //             // try stdout.writeByte('\n');
-    //         },
-    //     }
-    // };
-
-    const is_accept = true;
 
     switch (is_accept) {
         true => {

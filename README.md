@@ -8,20 +8,21 @@ This chat is E2EE.
     - [x] Send messages to an user using their ID (= X25519 public key)
     - [x] Send files
     - [x] Force any user to wait for authrization from the other part to send a message/file (except if the message is from us and to another user, it is however still the case for a me to me conversation)
-    - [ ] Perhaps add the actual sender in the encrypted part, to prevent an evil server from exchanging the sender and the receiver of a message ?
+    - [ ] Perhaps add the actual sender in the encrypted part, to prevent an evil server from exchanging the sender and the receiver of a message (but that would mean we would still have to believe what the other part sent, so it's either we believe the server or the other client) ?
 - [ ] GUI
     - [x] Connect to the server
     - [x] Authenticate using a passphrase (which will be derived)
     - [x] Send messages
     - [x] Send files
-    - [ ] Ask the user for confirmation to accept the message if the message is either from a new sender or too large (e.g. 10ko)
-    - [ ] Show message requests and their avancement the same way as messages
+    - [x] Ask the user for confirmation to accept the message if the message is either from a new sender or too large (e.g. 10ko)
+    - [x] Show message requests and their avancement the same way as messages
     - [x] Put each file in their DM directory
     - [x] E2EE the files
     - [ ] Patch Windows lags and "Not responding" issues
     - [ ] Perhaps display small images directly in the app ?
     - [ ] Perhaps even display small videos/gifs directly in the app ?
     - [ ] Speed up file transfers by using "seek" and more multi-threading ?
+    - [ ] Improve the UI, which is for now very unstable (e.g. texts being cut by the end of the window)
 - [ ] E2EE files decrypt script
     - [x] Basic file decryption
     - [x] Put the decrypted files in the TMP directory

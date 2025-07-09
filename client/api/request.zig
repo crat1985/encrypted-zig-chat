@@ -92,7 +92,10 @@ pub const ReceiveRequest = struct {
     symmetric_key: [32]u8,
     target_id: [32]u8,
     total_size: u64,
+    index: u32,
 };
+
+// const HashMapType = std.HashMap([32]u8, std.AutoHashMap(u64, ReceiveRequest), @import("../../id_hashmap_ctx.zig").HashMapContext, 70);
 
 pub var receive_requests: std.AutoHashMap(u64, ReceiveRequest) = undefined;
 pub var unvalidated_receive_requests: std.AutoHashMap(u64, ReceiveRequest) = undefined;
