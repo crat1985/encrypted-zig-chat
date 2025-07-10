@@ -7,6 +7,7 @@ const Mutex = mutex.Mutex;
 const request = @import("client/api/request.zig");
 const Font = @import("client/gui/font.zig");
 const listen = @import("client/api/listen.zig");
+const txt_mod = @import("client/gui/txt.zig");
 
 pub const std_options: std.Options = .{
     // Set the log level to info
@@ -79,36 +80,56 @@ pub fn main() !void {
         GUI.WIDTH = @floatFromInt(C.GetScreenWidth());
         GUI.HEIGHT = @floatFromInt(C.GetScreenHeight());
 
-        const top_left_display_bounds = C.Rectangle{
+        var bounds = C.Rectangle{
             .x = 0,
             .y = 0,
             .width = GUI.WIDTH,
-            .height = GUI.FONT_SIZE * 2,
+            .height = GUI.HEIGHT,
         };
 
-        try @import("client/gui/id_top_left_display.zig").draw_id_top_left_display(pubkey, &cursor, top_left_display_bounds);
+        {
+            const top_left_display_bounds = C.Rectangle{
+                .x = 0,
+                .y = 0,
+                .width = GUI.WIDTH,
+                .height = GUI.FONT_SIZE,
+            };
+
+            try @import("client/gui/id_top_left_display.zig").draw_id_top_left_display(pubkey, &cursor, top_left_display_bounds);
+
+            bounds.y += top_left_display_bounds.height;
+            bounds.height -= top_left_display_bounds.height;
+        }
 
         const is_there_req = request.receive_requests.count() != 0 or request.unvalidated_receive_requests.count() != 0;
 
-        const sidebar_width = if (target_id) |_| GUI.WIDTH / 4 else if (is_there_req) GUI.WIDTH * 3 / 4 else GUI.WIDTH;
+        {
+            const sidebar_width = if (target_id) |_| GUI.WIDTH / 4 else if (is_there_req) GUI.WIDTH * 3 / 4 else GUI.WIDTH;
 
-        const sidebar_rect = C.Rectangle{
-            .x = top_left_display_bounds.x,
-            .y = top_left_display_bounds.y + top_left_display_bounds.height,
-            .width = sidebar_width,
-            .height = GUI.HEIGHT - top_left_display_bounds.height,
-        };
+            const sidebar_rect = C.Rectangle{
+                .x = bounds.x,
+                .y = bounds.y,
+                .width = sidebar_width,
+                .height = bounds.height,
+            };
 
-        try GUI.draw_choose_discussion_sidebar(sidebar_rect, &dm_state, &target_id);
+            try GUI.draw_choose_discussion_sidebar(sidebar_rect, &dm_state, &target_id);
+
+            bounds.x += sidebar_rect.width;
+            bounds.width -= sidebar_rect.width;
+        }
 
         if (target_id) |target| {
-            const dm_screen_width = if (is_there_req) GUI.WIDTH / 2 else GUI.WIDTH * 3 / 4;
+            //the line vertical separator
+            C.DrawLineV(.{ .x = bounds.x, .y = bounds.y }, .{ .x = bounds.x, .y = bounds.y + bounds.height }, C.WHITE);
+
+            const dm_screen_width = if (is_there_req) bounds.width * 3 / 4 else bounds.width;
 
             const dm_screen_bounds = C.Rectangle{
-                .x = sidebar_rect.x + sidebar_rect.width,
-                .y = sidebar_rect.y,
+                .x = bounds.x,
+                .y = bounds.y,
                 .width = dm_screen_width,
-                .height = sidebar_rect.height,
+                .height = bounds.height,
             };
 
             const target_id_parsed = std.crypto.dh.X25519.Curve.fromBytes(target);
@@ -122,61 +143,55 @@ pub fn main() !void {
 
             try GUI.draw_dm_screen(pubkey, target, &current_message, dm_screen_bounds, message_keyboard_enabled, &cursor, symmetric_key, &target_id);
 
-            C.DrawLineV(.{ .x = sidebar_rect.x + sidebar_rect.width, .y = sidebar_rect.y }, .{ .x = sidebar_rect.x + sidebar_rect.width, .y = sidebar_rect.y + sidebar_rect.height }, C.WHITE);
-
             if (C.IsFileDropped()) {
-                const files = C.LoadDroppedFiles();
-                defer C.UnloadDroppedFiles(files);
-
-                const files_slice = files.paths[0..@intCast(files.count)];
-
-                for (files_slice) |file_path| {
-                    const file_path_n = C.TextLength(file_path);
-
-                    const file_name = C.GetFileName(file_path);
-                    const file_name_n: usize = @intCast(C.TextLength(file_name));
-                    var file_name_array: [255]u8 = undefined;
-                    @memcpy(file_name_array[0..file_name_n], file_name[0..file_name_n]);
-
-                    const file = try std.fs.openFileAbsolute(file_path[0..file_path_n], .{});
-
-                    const msg = request.SendRequest{
-                        .symmetric_key = symmetric_key,
-                        .target_id = target,
-                        .data = .{
-                            .file = .{
-                                .file = file,
-                                .name = file_name_array,
-                                .name_len = @intCast(file_name_n),
-                                .size = (try file.metadata()).size(),
-                            },
-                        },
-                    };
-
-                    try request.send_request(msg);
-                }
+                try handle_files_dropped(symmetric_key, target);
             }
+
+            bounds.x += dm_screen_bounds.width;
+            bounds.width -= dm_screen_bounds.width;
         }
 
         if (is_there_req) {
-            const request_msg_bounds = C.Rectangle{
-                .x = GUI.WIDTH * 3 / 4,
-                .y = sidebar_rect.y,
-                .width = GUI.WIDTH / 4,
-                .height = sidebar_rect.height,
-            };
+            bounds.height /= 4;
+            try draw_message_request(bounds, &cursor);
 
-            try draw_message_request(request_msg_bounds, &cursor);
+            bounds.y += bounds.height;
 
-            const validated_requests_msg_bounds = C.Rectangle{
-                .x = request_msg_bounds.x,
-                .y = request_msg_bounds.y + request_msg_bounds.height,
-                .width = request_msg_bounds.width,
-                .height = request_msg_bounds.height,
-            };
-
-            try draw_validated_message_request_avancement(validated_requests_msg_bounds);
+            try draw_validated_message_request_avancement(bounds);
         }
+    }
+}
+
+fn handle_files_dropped(symmetric_key: [32]u8, target_id: [32]u8) !void {
+    const files = C.LoadDroppedFiles();
+    defer C.UnloadDroppedFiles(files);
+
+    const files_slice = files.paths[0..@intCast(files.count)];
+
+    for (files_slice) |file_path| {
+        const file_path_n = C.TextLength(file_path);
+
+        const file_name = C.GetFileName(file_path);
+        const file_name_n: usize = @intCast(C.TextLength(file_name));
+        var file_name_array: [255]u8 = undefined;
+        @memcpy(file_name_array[0..file_name_n], file_name[0..file_name_n]);
+
+        const file = try std.fs.openFileAbsolute(file_path[0..file_path_n], .{});
+
+        const msg = request.SendRequest{
+            .symmetric_key = symmetric_key,
+            .target_id = target_id,
+            .data = .{
+                .file = .{
+                    .file = file,
+                    .name = file_name_array,
+                    .name_len = @intCast(file_name_n),
+                    .size = (try file.metadata()).size(),
+                },
+            },
+        };
+
+        try request.send_request(msg);
     }
 }
 
@@ -208,7 +223,7 @@ fn draw_message_request(bounds: C.Rectangle, cursor: *c_int) !void {
         .height = bounds.height / 2,
     };
 
-    Font.drawText(message_req_msg, txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
+    txt_mod.drawText(u8, message_req_msg, txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
 
     const side = @min(bounds.height / 2, bounds.width / 5);
 
@@ -267,7 +282,7 @@ fn draw_validated_message_request_avancement(bounds: C.Rectangle) !void {
         .height = bounds.height / 3,
     };
 
-    Font.drawText(message_req_msg, txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
+    txt_mod.drawText(u8, message_req_msg, txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
 
     const done = @min(@as(u64, value.index) * @import("client/api/constants.zig").PAYLOAD_AND_PADDING_SIZE, value.total_size);
 
@@ -278,7 +293,7 @@ fn draw_validated_message_request_avancement(bounds: C.Rectangle) !void {
 
     txt_bounds.y += txt_bounds.height;
 
-    Font.drawText(avancement_text, txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
+    txt_mod.drawText(u8, avancement_text, txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
 
     txt_bounds.y += txt_bounds.height + 10;
     txt_bounds.x -= 10;

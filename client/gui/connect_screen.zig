@@ -3,6 +3,7 @@ const C = @import("c.zig").C;
 const GUI = @import("../gui.zig");
 const txt_input = @import("text_input.zig");
 const Font = @import("font.zig");
+const Button = @import("button.zig").Button;
 
 const allocator = std.heap.page_allocator;
 
@@ -19,6 +20,9 @@ pub fn connect_to_server() !std.net.Stream {
         GUI.WIDTH = @floatFromInt(C.GetScreenWidth());
         GUI.HEIGHT = @floatFromInt(C.GetScreenHeight());
 
+        var cursor = C.MOUSE_CURSOR_DEFAULT;
+        defer C.SetMouseCursor(cursor);
+
         const bounds = C.Rectangle{
             .x = 0,
             .y = 0,
@@ -26,7 +30,7 @@ pub fn connect_to_server() !std.net.Stream {
             .height = GUI.HEIGHT,
         };
 
-        try draw_connect_to_server_screen(&server_addr, &server, bounds);
+        try draw_connect_to_server_screen(&server_addr, &server, bounds, &cursor);
 
         if (C.IsKeyPressed(C.KEY_ENTER)) {
             try connect_to_server_button_clicked(&server_addr, &server);
@@ -38,36 +42,28 @@ pub fn connect_to_server() !std.net.Stream {
     return server.?;
 }
 
-fn draw_connect_to_server_screen(server_addr: *[]u8, server: *?std.net.Stream, bounds: C.Rectangle) !void {
+fn draw_connect_to_server_screen(server_addr: *[]u8, server: *?std.net.Stream, bounds: C.Rectangle, cursor: *c_int) !void {
     var txt_input_bounds = C.Rectangle{
         .x = bounds.x,
-        .y = bounds.y + bounds.height * 2 / 6,
+        .y = bounds.y + bounds.height / 6,
         .width = bounds.width,
         .height = bounds.height * 2 / 6,
     };
 
-    const ConnectButtonText = "Connect";
-
-    try txt_input.draw_text_input(txt_input_bounds, .{ .ASCII = server_addr }, GUI.FONT_SIZE, .Center, .Center);
+    try txt_input.draw_text_input(u8, server_addr, txt_input_bounds, GUI.FONT_SIZE, .Center, .Center);
 
     txt_input_bounds.y += txt_input_bounds.height;
     txt_input_bounds.height = bounds.height / 6;
 
-    const connect_button = Font.getRealTextRect(txt_input_bounds, GUI.button_padding, GUI.button_padding, GUI.FONT_SIZE, .{ .Bytes = ConnectButtonText }, .Center, .Center);
+    const ConnectButtonText = "Connect";
 
-    var button_color = C.BLUE;
+    const connect_button = Button(u8).init_default_text_button_center(txt_input_bounds, ConnectButtonText, true);
+    connect_button.set_cursor(cursor);
+    connect_button.draw();
 
-    if (C.CheckCollisionPointRec(C.GetMousePosition(), connect_button)) {
-        button_color = C.DARKBLUE;
-        if (C.IsMouseButtonDown(C.MOUSE_LEFT_BUTTON)) {
-            button_color = C.DARKPURPLE;
-        }
-        if (C.IsMouseButtonPressed(C.MOUSE_LEFT_BUTTON)) {
-            try connect_to_server_button_clicked(server_addr, server);
-        }
+    if (connect_button.is_clicked()) {
+        try connect_to_server_button_clicked(server_addr, server);
     }
-
-    Font.drawDefaultButtonTextRect(txt_input_bounds, C.WHITE, C.BLUE, .{ .Bytes = ConnectButtonText });
 }
 
 const DEFAULT_ADDR = std.net.Address.initIp4(.{ 127, 0, 0, 1 }, 8080);

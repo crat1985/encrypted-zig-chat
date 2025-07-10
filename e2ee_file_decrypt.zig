@@ -14,7 +14,7 @@ fn get_tmp_dir() ![]u8 {
     const prefix = switch (@import("builtin").target.os.tag) {
         .windows => std.process.getEnvVarOwned(allocator, "TEMP") catch try allocator.dupe(u8, "C:\\Windows\\Temp"),
         .macos, .linux => std.process.getEnvVarOwned(allocator, "TMPDIR") catch try allocator.dupe(u8, "/tmp"),
-        else => @compileError("Unsupported OS"),
+        else => |tag| @compileError("Unsupported OS " ++ @tagName(tag)),
     };
     // defer allocator.free(prefix);
 
