@@ -1,10 +1,10 @@
 const std = @import("std");
-const C = @import("c.zig").C;
-const txt_input = @import("text_input.zig");
-const GUI = @import("../gui.zig");
-const api = @import("../api.zig");
-const Font = @import("font.zig");
-const Button = @import("button.zig").Button;
+const C = @import("../c.zig").C;
+// const txt_input = @import("../components/text_input.zig");
+const GUI = @import("../../gui.zig");
+const api = @import("../../api.zig");
+const Font = @import("../font.zig");
+const Button = @import("../components/button.zig").Button;
 
 const allocator = std.heap.page_allocator;
 
@@ -48,12 +48,17 @@ pub fn handle_auth(reader: std.io.AnyReader) !std.crypto.dh.X25519.KeyPair {
 fn draw_auth_screen(passphrase: *[:0]c_int, keypair: *?std.crypto.dh.X25519.KeyPair, reader: std.io.AnyReader, bounds: C.Rectangle, cursor: *c_int) !void {
     var txt_input_bounds = C.Rectangle{
         .x = bounds.x,
-        .y = bounds.y + bounds.height * 2 / 6,
+        .y = bounds.y + bounds.height / 6,
         .width = bounds.width,
         .height = bounds.height / 6,
     };
 
-    try txt_input.draw_text_input(c_int, @ptrCast(passphrase), txt_input_bounds, GUI.FONT_SIZE, .Center, .Center);
+    const passphrase_input = txt_input.TextInput(c_int).init(@ptrCast(passphrase), txt_input_bounds, GUI.FONT_SIZE, .{ .x = .Center, .y = .Center }, .{ .x = .Center, .y = .Center }, null, C.DARKGRAY, C.WHITE, null);
+    passphrase_input.draw(true);
+
+    if (txt_input.TextInput(c_int).get_char()) |c| {
+        try txt_input.TextInput(c_int).append_to_slice(@ptrCast(passphrase), c);
+    }
 
     txt_input_bounds.y += txt_input_bounds.height;
 

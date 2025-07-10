@@ -74,11 +74,11 @@ const ManualScreen = struct {
             .height = bounds.y / 6,
         };
 
-        txt_mod.drawText(u8, txt, txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
+        txt_mod.drawText(u8, txt, txt_bounds, GUI.FONT_SIZE, C.WHITE, .{ .x = .Center, .y = .Center });
 
         txt_bounds.y += txt_bounds.height;
 
-        txt_input.draw_text_input_array(64, u8, manual_target_id, txt_bounds, manual_target_id_index, .Center, .Center, GUI.FONT_SIZE);
+        txt_input.draw_text_input_array(64, u8, manual_target_id, txt_bounds, manual_target_id_index, .{ .x = .Center, .y = .Center }, GUI.FONT_SIZE);
 
         txt_bounds.y += txt_bounds.height;
 
@@ -153,12 +153,12 @@ fn display_target_id(id: [32]u8, messages_count: usize, target_id: *?[32]u8, bou
     var button_txt_bounds = target_id_button.txt_bounds;
     button_txt_bounds.height /= 2;
 
-    txt_mod.drawText(u8, &id_hex, button_txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
+    txt_mod.drawText(u8, &id_hex, button_txt_bounds, GUI.FONT_SIZE, C.WHITE, .{ .x = .Center, .y = .Center });
 
     const number_of_messages_text = try std.fmt.allocPrint(allocator, "{d} message(s)", .{messages_count});
     defer allocator.free(number_of_messages_text);
 
     button_txt_bounds.y += bounds.height;
 
-    txt_mod.drawText(u8, number_of_messages_text, button_txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
+    txt_mod.drawText(u8, number_of_messages_text, button_txt_bounds, GUI.FONT_SIZE, C.WHITE, .{ .x = .Center, .y = .Center });
 }

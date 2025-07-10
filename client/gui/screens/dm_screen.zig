@@ -43,7 +43,7 @@ pub fn draw_dm_screen(my_id: [32]u8, dm: [32]u8, current_message: *[:0]c_int, _b
             .height = GUI.FONT_SIZE,
         };
 
-        txt_mod.drawText(u8, dm_with_txt, txt_bounds, GUI.FONT_SIZE, C.DARKGREEN, .Center, .Center);
+        txt_mod.drawText(u8, dm_with_txt, txt_bounds, GUI.FONT_SIZE, C.DARKGREEN, .{ .x = .Center, .y = .Center });
 
         bounds.y += txt_bounds.height;
         bounds.height -= txt_bounds.height;
@@ -84,7 +84,7 @@ fn draw_message_input_text(message: *[:0]c_int, _bounds: C.Rectangle, symmetric_
             .height = bounds.height,
         };
 
-        txt_mod.drawText(u8, enter_message_txt, enter_message_txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
+        txt_mod.drawText(u8, enter_message_txt, enter_message_txt_bounds, GUI.FONT_SIZE, C.WHITE, .{ .x = .Center, .y = .Center });
 
         bounds.x += enter_message_txt_bounds.width;
         bounds.width -= enter_message_txt_bounds.height;
@@ -112,7 +112,7 @@ fn draw_message_input_text(message: *[:0]c_int, _bounds: C.Rectangle, symmetric_
 
         try txt_input.draw_text_input(c_int, @ptrCast(message), bounds, GUI.FONT_SIZE, .Start, .Center);
     } else {
-        txt_mod.drawText(c_int, message.*, bounds, GUI.FONT_SIZE, C.WHITE, .Start, .Center);
+        txt_mod.drawText(c_int, message.*, bounds, GUI.FONT_SIZE, C.WHITE, .{ .x = .Start, .y = .Center });
     }
 }
 
@@ -150,7 +150,7 @@ fn draw_messages(dm: [32]u8, dm_hexz: [:0]u8, _bounds: C.Rectangle, cursor: *c_i
         msg_bounds.y += msg_bounds.height - msg_bounds_height;
         msg_bounds.height = msg_bounds_height;
 
-        txt_mod.drawText(c_int, msg_content_codepoints[0..@intCast(len)], msg_bounds, GUI.FONT_SIZE, C.WHITE, .Start, .Center);
+        txt_mod.drawText(c_int, msg_content_codepoints[0..@intCast(len)], msg_bounds, GUI.FONT_SIZE, C.WHITE, .{ .x = .Start, .y = .Center });
 
         bounds.height -= msg_bounds_height;
 
@@ -177,7 +177,7 @@ fn draw_messages(dm: [32]u8, dm_hexz: [:0]u8, _bounds: C.Rectangle, cursor: *c_i
             .height = GUI.FONT_SIZE,
         };
 
-        txt_mod.drawText(u8, author_hexz, author_bounds, GUI.FONT_SIZE, C.BLUE, .Start, .Center);
+        txt_mod.drawText(u8, author_hexz, author_bounds, GUI.FONT_SIZE, C.BLUE, .{ .x = .Start, .y = .Center });
 
         bounds.height -= author_bounds.height;
     }

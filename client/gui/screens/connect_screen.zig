@@ -47,13 +47,13 @@ fn draw_connect_to_server_screen(server_addr: *[]u8, server: *?std.net.Stream, b
         .x = bounds.x,
         .y = bounds.y + bounds.height / 6,
         .width = bounds.width,
-        .height = bounds.height * 2 / 6,
+        .height = bounds.height / 6,
     };
 
-    try txt_input.draw_text_input(u8, server_addr, txt_input_bounds, GUI.FONT_SIZE, .Center, .Center);
+    const server_addr_input = txt_input.TextInput(u8).init(server_addr, txt_input_bounds, GUI.FONT_SIZE, .{ .x = .Center, .y = .Center }, .{ .x = .Center, .y = .Center }, null, C.DARKGRAY, C.WHITE, null);
+    server_addr_input.draw(true);
 
     txt_input_bounds.y += txt_input_bounds.height;
-    txt_input_bounds.height = bounds.height / 6;
 
     const ConnectButtonText = "Connect";
 

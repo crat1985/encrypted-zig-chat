@@ -2,12 +2,7 @@ const C = @import("c.zig").C;
 const std = @import("std");
 const GUI = @import("../gui.zig");
 const Font = @import("font.zig");
-
-pub const Alignment = enum(u8) {
-    Center,
-    Start,
-    End,
-};
+const Alignment2 = @import("alignment.zig").Alignment2;
 
 fn isFontSizeFitting(comptime T: type, txt: []const T, bounds: C.Rectangle, fontSize: c_int) bool {
     var txt_mut = txt;
@@ -115,14 +110,14 @@ pub fn GetFontSize(comptime T: type, txt: []const T, bounds: C.Rectangle, maxFon
     return fontSize;
 }
 
-pub fn drawText(comptime T: type, txt: []const T, bounds: C.Rectangle, maxFontSize: c_int, tint: C.Color, h_align: Alignment, v_align: Alignment) void {
+pub fn drawText(comptime T: type, txt: []const T, bounds: C.Rectangle, maxFontSize: c_int, tint: C.Color, text_align: Alignment2) void {
     const font_size = GetFontSize(T, txt, bounds, maxFontSize);
     const font_size_f32: f32 = @floatFromInt(font_size);
 
     const line_count = getLineCount(T, txt, bounds, font_size);
     const txt_height = @as(f32, @floatFromInt(line_count)) * font_size_f32 * 1.5;
 
-    const y_top = switch (v_align) {
+    const y_top = switch (text_align.y) {
         .Center => bounds.y + bounds.height / 2 - txt_height / 2,
         .Start => bounds.y,
         .End => bounds.y + bounds.height - txt_height,
@@ -139,7 +134,7 @@ pub fn drawText(comptime T: type, txt: []const T, bounds: C.Rectangle, maxFontSi
 
         txt_mut = txt_mut[line_char_count..];
 
-        const x_left = switch (h_align) {
+        const x_left = switch (text_align.x) {
             .Center => bounds.x + bounds.width / 2 - txt_width / 2,
             .Start => bounds.x,
             .End => bounds.x + bounds.width - txt_width,

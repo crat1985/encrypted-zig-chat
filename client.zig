@@ -223,7 +223,7 @@ fn draw_message_request(bounds: C.Rectangle, cursor: *c_int) !void {
         .height = bounds.height / 2,
     };
 
-    txt_mod.drawText(u8, message_req_msg, txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
+    txt_mod.drawText(u8, message_req_msg, txt_bounds, GUI.FONT_SIZE, C.WHITE, .{ .x = .Center, .y = .Center });
 
     const side = @min(bounds.height / 2, bounds.width / 5);
 
@@ -282,7 +282,7 @@ fn draw_validated_message_request_avancement(bounds: C.Rectangle) !void {
         .height = bounds.height / 3,
     };
 
-    txt_mod.drawText(u8, message_req_msg, txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
+    txt_mod.drawText(u8, message_req_msg, txt_bounds, GUI.FONT_SIZE, C.WHITE, .{ .x = .Center, .y = .Center });
 
     const done = @min(@as(u64, value.index) * @import("client/api/constants.zig").PAYLOAD_AND_PADDING_SIZE, value.total_size);
 
@@ -293,7 +293,7 @@ fn draw_validated_message_request_avancement(bounds: C.Rectangle) !void {
 
     txt_bounds.y += txt_bounds.height;
 
-    txt_mod.drawText(u8, avancement_text, txt_bounds, GUI.FONT_SIZE, C.WHITE, .Center, .Center);
+    txt_mod.drawText(u8, avancement_text, txt_bounds, GUI.FONT_SIZE, C.WHITE, .{ .x = .Center, .y = .Center });
 
     txt_bounds.y += txt_bounds.height + 10;
     txt_bounds.x -= 10;
