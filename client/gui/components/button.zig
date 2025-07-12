@@ -19,20 +19,18 @@ pub const Button = struct {
 
     const Self = @This();
 
-    pub fn init(rect: ParentRect, colors: ?ButtonColors, is_enabled: bool) Self {
-        const colors_unwrap = colors orelse ButtonColors{};
-
+    pub fn init(rect: ParentRect, colors: ButtonColors, is_enabled: bool) Self {
         var self = Self{
             .rect = rect,
         };
 
         if (!is_enabled) {
-            self.rect.color = colors_unwrap.disabled;
+            self.rect.color = colors.disabled;
         } else if (self.is_hover()) {
-            self.rect.color = colors_unwrap.hover;
+            self.rect.color = colors.hover;
 
             if (C.IsMouseButtonDown(C.MOUSE_BUTTON_LEFT)) {
-                self.rect.color = colors_unwrap.pressed;
+                self.rect.color = colors.pressed;
             }
         }
 

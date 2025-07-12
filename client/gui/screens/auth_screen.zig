@@ -1,10 +1,11 @@
 const std = @import("std");
 const C = @import("../c.zig").C;
-// const txt_input = @import("../components/text_input.zig");
 const GUI = @import("../../gui.zig");
 const api = @import("../../api.zig");
 const Font = @import("../font.zig");
 const Button = @import("../components/button.zig").Button;
+const ParentRect = @import("../components/parent_rect.zig").ParentRect;
+const txt_mod = @import("../txt.zig");
 
 const allocator = std.heap.page_allocator;
 
@@ -53,8 +54,11 @@ fn draw_auth_screen(passphrase: *[:0]c_int, keypair: *?std.crypto.dh.X25519.KeyP
         .height = bounds.height / 6,
     };
 
-    const passphrase_input = txt_input.TextInput(c_int).init(@ptrCast(passphrase), txt_input_bounds, GUI.FONT_SIZE, .{ .x = .Center, .y = .Center }, .{ .x = .Center, .y = .Center }, null, C.DARKGRAY, C.WHITE, null);
-    passphrase_input.draw(true);
+    const txt_size = txt_mod.getTextSizeUsingMaxFontSize(c_int, passphrase.*, txt_input_bounds, GUI.FONT_SIZE);
+
+    const passphrase_input = ParentRect.init(txt_input_bounds, txt_size, null, .{ .x = .Center, .y = .Center }, C.DARKGRAY);
+
+    const txt_real_bounds = passphrase_input.draw(true);
 
     if (txt_input.TextInput(c_int).get_char()) |c| {
         try txt_input.TextInput(c_int).append_to_slice(@ptrCast(passphrase), c);

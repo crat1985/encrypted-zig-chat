@@ -12,6 +12,8 @@ pub const Alignment2 = struct {
 
     const Self = @This();
 
+    pub const Center: Self = .{ .x = .Center, .y = .Center };
+
     pub fn get_subbounds(self: Self, bounds: C.Rectangle, size: C.Vector2) C.Rectangle {
         const startx = switch (self.x) {
             .Center => bounds.x + bounds.width / 2 - size.x / 2,
